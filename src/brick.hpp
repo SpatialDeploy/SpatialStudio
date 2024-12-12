@@ -1,6 +1,8 @@
 #ifndef BRICK_H
 #define BRICK_H
 
+#include <memory>
+
 #include "helper.hpp"
 #include <fstream>
 
