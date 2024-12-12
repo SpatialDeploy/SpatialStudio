@@ -5,6 +5,8 @@
 #include <string>
 
 #include "brick.hpp"
+
+#define NANOVDB_USE_BLOSC
 #include <nanovdb/NanoVDB.h>
 
 //-------------------------------------------//

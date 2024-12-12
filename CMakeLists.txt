@@ -15,15 +15,15 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# find source files:
-file(GLOB_RECURSE splv_encoder_src CONFIGURE_DEPENDS "src/*.cpp" "src/*.c")
-add_executable(${PROJECT_NAME} ${splv_encoder_src})
+# add executable:
+add_executable(${PROJECT_NAME} "src/brick.cpp" "src/main.cpp" "src/splv_encoder.cpp")
 
 # find packages
 find_package(pybind11 REQUIRED)
+find_package(blosc REQUIRED)
 
 # add python module
-pybind11_add_module(py_splv_encoder ${splv_encoder_src})
+pybind11_add_module(py_splv_encoder "src/brick.cpp" "src/py_splv_encoder.cpp" "src/splv_encoder.cpp")
 
 if(WIN32)
     set_target_properties(py_splv_encoder PROPERTIES SUFFIX ".pyd")
@@ -31,4 +31,5 @@ endif()
 
 # add include directories and libraries
 include_directories("src/" ${pybind11_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} pybind11::lto pybind11::embed pybind11::module)
+target_link_libraries(${PROJECT_NAME} blosc)
+target_link_libraries(py_splv_encoder PRIVATE blosc pybind11::lto pybind11::embed pybind11::module)

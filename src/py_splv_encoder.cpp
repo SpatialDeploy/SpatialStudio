@@ -1,5 +1,6 @@
 #include "py_splv_encoder.hpp"
 
+#define NANOVDB_USE_BLOSC
 #include <nanovdb/NanoVDB.h>
 #include <nanovdb/util/IO.h>
 

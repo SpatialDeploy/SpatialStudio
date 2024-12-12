@@ -1,4 +1,6 @@
 #include <iostream>
+
+#define NANOVDB_USE_BLOSC
 #include <nanovdb/util/IO.h>
 
 #include "splv_encoder.hpp"

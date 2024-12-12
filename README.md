@@ -64,6 +64,7 @@ Once all the frames have been added, you must enter `f` to finish encoding, at w
 This project has the following dependencies which must be installed before building:
 - `cmake`
 - `pybind11`
+- `blosc`
 
 Once the dependencies have been installed, you can first generate build files from by calling
 ```bash
