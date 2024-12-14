@@ -136,9 +136,10 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 		Brick brick;
 		bool brickCreated = false;
 
-		for(uint32_t z = 0; z < BRICK_SIZE; z++)
-		for(uint32_t y = 0; y < BRICK_SIZE; y++)
+		//we are calling set_voxel in xyz order, we MUST make sure to read it back in the same order
 		for(uint32_t x = 0; x < BRICK_SIZE; x++)
+		for(uint32_t y = 0; y < BRICK_SIZE; y++)
+		for(uint32_t z = 0; z < BRICK_SIZE; z++)
 		{
 			int32_t readX = mapX * BRICK_SIZE + x + minX;
 			int32_t readY = mapY * BRICK_SIZE + y + minY;
@@ -178,11 +179,9 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 
 	//write frame:
 	//---------------
-	uint32_t frameSize = 0;
-	frameSize += mapXSize * mapYSize * mapZSize * sizeof(uint32_t);
-	frameSize += (uint32_t)bricks.size() * Brick::serialized_size();
+	uint32_t numBricks = (uint32_t)bricks.size();
 
-	m_outFile.write((const char*)&frameSize, sizeof(uint32_t));
+	m_outFile.write((const char*)&numBricks, sizeof(uint32_t));
 	m_outFile.write((const char*)map.get(), mapXSize * mapYSize * mapZSize * sizeof(uint32_t));
 	for(uint32_t i = 0; i < bricks.size(); i++)
 		bricks[i].serialize(m_outFile);
