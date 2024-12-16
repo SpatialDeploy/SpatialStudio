@@ -35,6 +35,8 @@ private:
 	std::vector<uint32_t> m_colors;
 	uint32_t m_voxelCount;
 
+	uint32_t serialize_bitmap(std::ofstream* file);
+
 	static uint32_t bitmap_len();
 };
 

@@ -23,7 +23,7 @@ void Brick::set_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color)
 void Brick::serialize(std::ofstream& file)
 {
 	file.write((const char*)&m_voxelCount, sizeof(uint32_t));
-	file.write((const char*)m_bitmap.get(), bitmap_len() * sizeof(uint32_t));
+	serialize_bitmap(&file);
 	file.write((const char*)m_colors.data(), m_voxelCount * sizeof(uint32_t));
 }
 
@@ -39,12 +39,63 @@ uint32_t Brick::serialized_size()
 
 uint32_t Brick::serialized_size_bitmap()
 {
-	return bitmap_len() * sizeof(uint32_t);
+	return serialize_bitmap(nullptr);
 }
 
 uint32_t Brick::serialized_size_colors()
 {
 	return sizeof(uint32_t) + m_voxelCount * sizeof(uint32_t);
+}
+
+uint32_t Brick::serialize_bitmap(std::ofstream* file)
+{
+	//initialize bytes:
+	//---------------
+
+	//TODO: find more performent soln than a vector
+	std::vector<uint8_t> bytes;
+
+	uint8_t curByte;
+	if((m_bitmap[0] & 1) != 0)
+		curByte = 0x80;
+	else
+		curByte = 0x00;
+
+	//calculate RLE:
+	//---------------
+	for(uint32_t x = 0; x < BRICK_SIZE; x++)
+	for(uint32_t y = 0; y < BRICK_SIZE; y++)
+	for(uint32_t z = 0; z < BRICK_SIZE; z++)
+	{
+		uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
+		uint32_t idxArr = idx / 32;
+		uint32_t idxBit = idx % 32;
+
+		bool filled = (m_bitmap[idxArr] & (1u << idxBit)) != 0;
+
+		if(filled != ((curByte & (1 << 7u)) != 0) || (curByte & 0x7f) == 127)
+		{
+			bytes.push_back(curByte);
+
+			if(filled)
+				curByte = 0x80;
+			else
+				curByte = 0x00;
+		}
+
+		curByte++;
+	}
+
+	bytes.push_back(curByte);
+
+	//write bytes:
+	//---------------
+	if(file != nullptr)
+		file->write((const char*)bytes.data(), bytes.size() * sizeof(uint8_t));
+
+	//return:
+	//---------------
+	return (uint32_t)bytes.size() * sizeof(uint8_t);
 }
 
 uint32_t Brick::bitmap_len()
