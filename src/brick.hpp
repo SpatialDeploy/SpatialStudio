@@ -26,6 +26,10 @@ public:
 	uint32_t get_voxel_count();
 	uint32_t serialized_size();
 
+	//for additional data collection
+	uint32_t serialized_size_bitmap();
+	uint32_t serialized_size_colors();
+
 private:
 	std::unique_ptr<uint32_t[]> m_bitmap;
 	std::vector<uint32_t> m_colors;

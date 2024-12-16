@@ -1,6 +1,12 @@
 #include "splv_encoder.hpp"
 #include <vector>
 
+#define PRINT_INFO 0
+
+#if PRINT_INFO
+	#include <iostream>
+#endif
+
 //-------------------------------------------//
 
 struct SPLVHeader
@@ -184,6 +190,39 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 		else
 			map[mapIdxArr] &= ~(1u << mapIdxBit);
 	}
+
+	//print compression info:
+	//---------------
+	#if PRINT_INFO
+	{
+		uint32_t mapBytes = mapLen * sizeof(uint32_t);
+		
+		uint32_t brickBytesBitmap = 0;
+		uint32_t brickBytesColors = 0;
+		for(uint32_t i = 0; i < bricks.size(); i++)
+		{
+			brickBytesBitmap += bricks[i].serialized_size_bitmap();
+			brickBytesColors += bricks[i].serialized_size_colors();
+		}
+
+		uint32_t brickBytes = brickBytesBitmap + brickBytesColors;
+		uint32_t totalBytes = brickBytes + mapBytes;
+
+		float brickBytesAvg = (float)brickBytes / (float)bricks.size();
+		float brickBytesAvgBitmap = (float)brickBytesBitmap / (float)bricks.size();
+		float brickBytesAvgColors = (float)brickBytesColors / (float)bricks.size();
+
+		std::cout << "FRAME " << m_frameCount << "\n";
+		std::cout << "\t- Number of Bricks: " << bricks.size() << "\n";
+		std::cout << "\t- Map Bytes: " << mapBytes << " (" << ((float)mapBytes / (float)totalBytes) * 100.0 << "%)\n";
+		std::cout << "\t- Total Brick Bytes: " << brickBytes << " (" << ((float)brickBytes / (float)totalBytes) * 100.0 << "%)\n";
+		std::cout << "\t\t- From Bitmaps: " << brickBytesBitmap << " (" << ((float)brickBytesBitmap / (float)brickBytes) * 100.0 << "%)\n";
+		std::cout << "\t\t- From Colors: " << brickBytesColors << " (" << ((float)brickBytesColors / (float)brickBytes) * 100.0 << "%)\n";
+		std::cout << "\t- Average Brick Bytes: " << brickBytesAvg << " (" << ((float)brickBytesAvg / (float)totalBytes) * 100.0 << "%)\n";
+		std::cout << "\t\t- From Bitmaps: " << brickBytesAvgBitmap << " (" << (brickBytesAvgBitmap / brickBytesAvg) * 100.0 << "%)\n";
+		std::cout << "\t\t- From Colors: " << brickBytesAvgColors << " (" << (brickBytesAvgColors / brickBytesAvg) * 100.0 << "%)\n";
+	}
+	#endif
 
 	//write frame:
 	//---------------

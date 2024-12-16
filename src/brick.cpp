@@ -34,7 +34,17 @@ uint32_t Brick::get_voxel_count()
 
 uint32_t Brick::serialized_size()
 {
-	return sizeof(uint32_t) + bitmap_len() * sizeof(uint32_t) + m_voxelCount * sizeof(uint32_t);
+	return serialized_size_bitmap() + serialized_size_colors();
+}
+
+uint32_t Brick::serialized_size_bitmap()
+{
+	return bitmap_len() * sizeof(uint32_t);
+}
+
+uint32_t Brick::serialized_size_colors()
+{
+	return sizeof(uint32_t) + m_voxelCount * sizeof(uint32_t);
 }
 
 uint32_t Brick::bitmap_len()
