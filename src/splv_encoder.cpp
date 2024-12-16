@@ -113,8 +113,13 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 	uint32_t mapXSize = xSize  / BRICK_SIZE;
 	uint32_t mapYSize = ySize / BRICK_SIZE;
 	uint32_t mapZSize = zSize  / BRICK_SIZE;
+	
+	uint32_t mapLen = mapXSize * mapYSize * mapZSize;
+	mapLen = (mapLen + 31) & (~31); //round up to multiple of 32 (sizeof(uint32_t))
+	mapLen /= 4; //4 bytes per uint32_t
+	mapLen /= 8; //8 bits per byte
 
-	std::unique_ptr<uint32_t[]> map = std::unique_ptr<uint32_t[]>(new uint32_t[mapXSize * mapYSize * mapZSize]);
+	std::unique_ptr<uint32_t[]> map = std::unique_ptr<uint32_t[]>(new uint32_t[mapLen]);
 	std::vector<Brick> bricks;
 
 	//initialize map and bricks vector:
@@ -129,9 +134,10 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 	//---------------
 	auto accessor = grid->getAccessor();
 
-	for(uint32_t mapZ = 0; mapZ < mapDepth;  mapZ++)
-	for(uint32_t mapY = 0; mapY < mapHeight; mapY++)
+	//we are creating bricks in xyz order, we MUST make sure to read it back in the same order
 	for(uint32_t mapX = 0; mapX < mapWidth;  mapX++)
+	for(uint32_t mapY = 0; mapY < mapHeight; mapY++)
+	for(uint32_t mapZ = 0; mapZ < mapDepth;  mapZ++)
 	{
 		Brick brick;
 		bool brickCreated = false;
@@ -167,14 +173,16 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 		}
 
 		uint32_t mapIdx = mapX + mapWidth * (mapY + mapHeight * mapZ);
+		uint32_t mapIdxArr = mapIdx / 32;
+		uint32_t mapIdxBit = mapIdx % 32;
 		
 		if(brickCreated)
 		{
-			map[mapIdx] = (uint32_t)bricks.size();
+			map[mapIdxArr] |= (1u << mapIdxBit);
 			bricks.push_back(std::move(brick));
 		}
 		else
-			map[mapIdx] = EMPTY_BRICK;
+			map[mapIdxArr] &= ~(1u << mapIdxBit);
 	}
 
 	//write frame:
@@ -182,7 +190,7 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 	uint32_t numBricks = (uint32_t)bricks.size();
 
 	m_outFile.write((const char*)&numBricks, sizeof(uint32_t));
-	m_outFile.write((const char*)map.get(), mapXSize * mapYSize * mapZSize * sizeof(uint32_t));
+	m_outFile.write((const char*)map.get(), mapLen * sizeof(uint32_t));
 	for(uint32_t i = 0; i < bricks.size(); i++)
 		bricks[i].serialize(m_outFile);
 
