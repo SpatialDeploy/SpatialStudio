@@ -250,6 +250,7 @@ void SPLVEncoder::finish()
 
 	m_outFile.seekp(std::ios::beg);
 	m_outFile.write((const char*)&header, sizeof(SPLVHeader));
+	m_outFile.close();
 
 	m_valid = false;
 }
