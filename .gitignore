@@ -28,6 +28,6 @@ x32/
 # macos
 .DS_Store
 
-# output videos + testing frames:
-out/
-test_frames/
+# python package info:
+*.egg-info/
+__pycache__/

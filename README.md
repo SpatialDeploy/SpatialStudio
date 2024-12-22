@@ -74,4 +74,8 @@ cmake ..
 ```
 This will generate a `Makefile` on Unix systems, or a Visual Studio solution on Windows systems. On Unix, you can simply call `make` to build the project. On Windows you must open the VS solution and build from there.
 
-Once the project has build successfully, the CLI executable as well as the python library (`.pyd` file) can be found under the `bin` directory. There isn't yet support for installing the python bindings system-wide, so you will have to do this manually.
+Once the project has build successfully, the CLI executable as well as the python library (`.pyd` file) can be found under the `bin` directory. To install the python library globally, you can call:
+```bash
+pip install -e .
+```
+From the root directory.
