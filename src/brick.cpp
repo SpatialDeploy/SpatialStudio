@@ -11,11 +11,12 @@ Brick::Brick() : m_voxelCount(0)
 
 void Brick::set_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color)
 {
-	uint32_t packedColor = (color.r << 24) | (color.g << 16) | (color.b << 8) | color.a;
-
 	uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
 	m_bitmap[idx / 32] |= 1 << (idx % 32);
-	m_colors.push_back(packedColor);
+	
+	m_colors.push_back(color.r);
+	m_colors.push_back(color.g);
+	m_colors.push_back(color.b);
 
 	m_voxelCount++;
 }
@@ -24,7 +25,7 @@ void Brick::serialize(std::ofstream& file)
 {
 	file.write((const char*)&m_voxelCount, sizeof(uint32_t));
 	serialize_bitmap(&file);
-	file.write((const char*)m_colors.data(), m_voxelCount * sizeof(uint32_t));
+	file.write((const char*)m_colors.data(), m_voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t));
 }
 
 uint32_t Brick::get_voxel_count()
@@ -44,7 +45,7 @@ uint32_t Brick::serialized_size_bitmap()
 
 uint32_t Brick::serialized_size_colors()
 {
-	return sizeof(uint32_t) + m_voxelCount * sizeof(uint32_t);
+	return sizeof(uint32_t) + m_voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t);
 }
 
 uint32_t Brick::serialize_bitmap(std::ofstream* file)

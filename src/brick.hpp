@@ -11,6 +11,8 @@
 #define BRICK_SIZE 8
 #define EMPTY_BRICK UINT32_MAX
 
+#define NUM_COLOR_COMPONENTS 3
+
 //-------------------------------------------//
 
 class Brick
@@ -32,7 +34,7 @@ public:
 
 private:
 	std::unique_ptr<uint32_t[]> m_bitmap;
-	std::vector<uint32_t> m_colors;
+	std::vector<uint8_t> m_colors;
 	uint32_t m_voxelCount;
 
 	uint32_t serialize_bitmap(std::ofstream* file);
