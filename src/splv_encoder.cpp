@@ -1,5 +1,7 @@
 #include "splv_encoder.hpp"
+
 #include <vector>
+#include "morton_lut.hpp"
 
 #define PRINT_INFO 0
 
@@ -140,6 +142,8 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 	//---------------
 	auto accessor = grid->getAccessor();
 
+	//TODO: create bricks in morton order and add RLE
+
 	//we are creating bricks in xyz order, we MUST make sure to read it back in the same order
 	for(uint32_t mapX = 0; mapX < mapWidth;  mapX++)
 	for(uint32_t mapY = 0; mapY < mapHeight; mapY++)
@@ -148,11 +152,13 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 		Brick brick;
 		bool brickCreated = false;
 
-		//we are calling set_voxel in xyz order, we MUST make sure to read it back in the same order
-		for(uint32_t x = 0; x < BRICK_SIZE; x++)
-		for(uint32_t y = 0; y < BRICK_SIZE; y++)
-		for(uint32_t z = 0; z < BRICK_SIZE; z++)
+		//we are calling set_voxel in morton order, we MUST make sure to read it back in the same order
+		for(uint32_t i = 0; i < BRICK_SIZE * BRICK_SIZE * BRICK_SIZE; i++)
 		{
+			uint32_t x = MORTON_TO_COORDINATE[i].x;
+			uint32_t y = MORTON_TO_COORDINATE[i].y;
+			uint32_t z = MORTON_TO_COORDINATE[i].z;
+
 			int32_t readX = mapX * BRICK_SIZE + x + minX;
 			int32_t readY = mapY * BRICK_SIZE + y + minY;
 			int32_t readZ = mapZ * BRICK_SIZE + z + minZ;
@@ -175,7 +181,7 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 			
 			nanovdb::Vec3f normColor = accessor.getValue(readCoordNVDB);
 			Color color((uint8_t)std::roundf(normColor[0] * 255.0f), (uint8_t)std::roundf(normColor[1] * 255.0f), (uint8_t)std::roundf(normColor[2] * 255.0f));
-			brick.set_voxel(x, y, z, color);
+			brick.add_voxel(x, y, z, color);
 		}
 
 		uint32_t mapIdx = mapX + mapWidth * (mapY + mapHeight * mapZ);

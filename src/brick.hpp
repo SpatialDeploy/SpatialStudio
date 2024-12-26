@@ -22,7 +22,7 @@ public:
 
 	//NOTE: colors are only stored for set voxels, and are stored in the order that the voxels are set
 	//make sure you call this function in an order that makes sense
-	void set_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color);
+	void add_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color);
 	void serialize(std::ofstream& file);
 
 	uint32_t get_voxel_count();

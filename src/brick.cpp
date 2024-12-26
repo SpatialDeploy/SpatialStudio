@@ -1,6 +1,8 @@
 #include "brick.hpp"
 #include <memory>
 
+#include "morton_lut.hpp"
+
 //-------------------------------------------//
 
 Brick::Brick() : m_voxelCount(0)
@@ -9,7 +11,7 @@ Brick::Brick() : m_voxelCount(0)
 	m_colors = {};
 }
 
-void Brick::set_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color)
+void Brick::add_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color)
 {
 	uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
 	m_bitmap[idx / 32] |= 1 << (idx % 32);
@@ -64,10 +66,14 @@ uint32_t Brick::serialize_bitmap(std::ofstream* file)
 
 	//calculate RLE:
 	//---------------
-	for(uint32_t x = 0; x < BRICK_SIZE; x++)
-	for(uint32_t y = 0; y < BRICK_SIZE; y++)
-	for(uint32_t z = 0; z < BRICK_SIZE; z++)
+
+	//we do RLE in morton order, we MUST make sure to read it back in the same order
+	for(uint32_t i = 0; i < BRICK_SIZE * BRICK_SIZE * BRICK_SIZE; i++)
 	{
+		uint32_t x = MORTON_TO_COORDINATE[i].x;
+		uint32_t y = MORTON_TO_COORDINATE[i].y;
+		uint32_t z = MORTON_TO_COORDINATE[i].z;
+
 		uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
 		uint32_t idxArr = idx / 32;
 		uint32_t idxBit = idx % 32;
