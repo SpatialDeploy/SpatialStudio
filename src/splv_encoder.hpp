@@ -18,13 +18,14 @@ enum class Axis : uint32_t
 	Z = 2
 };
 
+//-------------------------------------------//
+
 class SPLVEncoder
 {
 public:
 	SPLVEncoder(uint32_t xSize, uint32_t ySize, uint32_t zSize, Axis lrAxis, Axis udAxis, Axis fbAxis, float framerate, std::ofstream& outFile);
 
-	void add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox, bool scaleToFit = false);
-
+	void add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox);
 	void finish();
 
 private:
@@ -41,6 +42,17 @@ private:
 
 	bool m_valid;
 	std::ofstream& m_outFile;
+
+	//-------------//
+
+	struct Frame
+	{
+		std::unique_ptr<uint32_t[]> map;
+		std::vector<Brick> bricks;
+	};
+
+	std::unique_ptr<Frame> create_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox);
+	void encode_frame(std::unique_ptr<Frame> frame);
 };
 
 #endif //#ifndef SPLV_ENCODER_H

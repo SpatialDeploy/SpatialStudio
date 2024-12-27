@@ -20,26 +20,23 @@ class Brick
 public:
 	Brick();
 
-	//NOTE: colors are only stored for set voxels, and are stored in the order that the voxels are set
-	//make sure you call this function in an order that makes sense
-	void add_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color);
+	//sets a given voxel to be filled with a given color, all voxels ae empty by default
+	void set_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color);
+	//sets a given voxel to be empty
+	void unset_voxel(uint32_t x, uint32_t y, uint32_t z);
+
+	//serializes the brick, performing any per-brick compression
 	void serialize(std::ofstream& file);
-
-	uint32_t get_voxel_count();
-	uint32_t serialized_size();
-
-	//for additional data collection
-	uint32_t serialized_size_bitmap();
-	uint32_t serialized_size_colors();
+	void serialize_verbose(std::ofstream& file, uint32_t& voxelCount, uint32_t& size, uint32_t& sizeBitmap, uint32_t& sizeColors);
 
 private:
 	std::unique_ptr<uint32_t[]> m_bitmap;
-	std::vector<uint8_t> m_colors;
-	uint32_t m_voxelCount;
+	std::unique_ptr<Color[]> m_colors;
 
-	uint32_t serialize_bitmap(std::ofstream* file);
+	//uint32_t serialize_bitmap(std::ofstream* file);
 
 	static uint32_t bitmap_len();
+	static uint32_t colors_len();
 };
 
 #endif //#ifndef BRICK_H

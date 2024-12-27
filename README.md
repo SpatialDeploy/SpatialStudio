@@ -29,8 +29,7 @@ for i in range(0, 60):
 		minZ=0,
 		maxX=63,
 		maxY=63,
-		maxZ=63,
-		scaleToFit=False
+		maxZ=63
 	)
 
 encoder.finish()
@@ -42,10 +41,9 @@ An encoder is first created with `splv.SPLVEncoder(xSize, ySize, zSize, lrAxis, 
 - `framerate` defines the frames per second. 
 - `outputPath` defines the path to the output spatial file.
 
-A frame is added using the `splv.Encoder.add_frame(path, minX, minY, minZ, maxX, maxY, maxZ, scaleToFit)` function. 
+A frame is added using the `splv.Encoder.add_frame(path, minX, minY, minZ, maxX, maxY, maxZ)` function. 
 - `path` defines the path to the `nvdb` file to add. 
 - `min*` and `max*` define the bounding box of the frame within the `nvdb`
-- `scaleToFit` defines whether to linearly scale the content of the `nvdb` if it does not match the dimensions of the spatial.
 
 Once all frames have been added, you must call `splv.Encoder.finish()` to complete encoding. After `finish()` has been called, the encoder is invalid and no more frames can be added.
 
@@ -56,7 +54,7 @@ The CLI must be called with `./splv_encoder -d [xSize] [ySize] [zSize] -a [lrAxi
 - `framerate` defines the frames per second. 
 - `outputPath` defines the path to the output spatial file.
 
-Once in the CLI, a frame can be added be entering `a [pathToNVDB]`, where `pathToNVDB` is the path to the `nvdb` you wish to add. The bounding box within the `nvdb` to add can be set with the command `b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]`, which sets the bounding box for all subsequent frames. The default is `b 0 0 0 width-1 height-1 depth-1`. If you wish to add a frame of different dimensions than was specified when calling into the CLI, you must use `s [on/off]` which turns linear scaling on or off.
+Once in the CLI, a frame can be added be entering `a [pathToNVDB]`, where `pathToNVDB` is the path to the `nvdb` you wish to add. The bounding box within the `nvdb` to add can be set with the command `b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]`, which sets the bounding box for all subsequent frames. The default is `b 0 0 0 width-1 height-1 depth-1`.
 
 Once all the frames have been added, you must enter `f` to finish encoding, at which point no more frames can be added. Alternatively, if you wish to exit the CLI without finishing the encoding, you can enter `q`.
 

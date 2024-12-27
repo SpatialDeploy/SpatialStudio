@@ -50,55 +50,19 @@ SPLVEncoder::SPLVEncoder(uint32_t xSize, uint32_t ySize, uint32_t zSize, Axis lr
 	m_valid = true;
 }
 
-void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox, bool scaleToFit)
+void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox)
 {
 	if(!m_valid)
 		throw std::invalid_argument("encoder is not valid (invalid params or finished encoding)");
 
-	//scale grid and bounding box if needed:
-	//---------------
-	bool divScaleX = false;
-	bool divScaleY = false;
-	bool divScaleZ = false;
+	std::unique_ptr<Frame> frame = create_frame(grid, boundingBox);
+	encode_frame(std::move(frame));
 
-	uint32_t scaleX = 1;
-	uint32_t scaleY = 1;
-	uint32_t scaleZ = 1;
+	m_frameCount++;
+}
 
-	if(scaleToFit)
-	{
-		//TOOD: make sure this still works with nvdb
-
-		float curWidth  = (float)(boundingBox.max().asVec3d()[0] - boundingBox.min().asVec3d()[0]) + 1.0f;
-		float curHeight = (float)(boundingBox.max().asVec3d()[1] - boundingBox.min().asVec3d()[1]) + 1.0f;
-		float curDepth  = (float)(boundingBox.max().asVec3d()[2] - boundingBox.min().asVec3d()[2]) + 1.0f;
-		
-		nanovdb::Vec3d center = (boundingBox.max().asVec3d() + boundingBox.min().asVec3d()) / 2.0f;
-		nanovdb::Coord newStart(
-			(int32_t)std::round(center[0] - (float)m_xSize  / 2.0f),
-			(int32_t)std::round(center[1] - (float)m_ySize / 2.0f),
-			(int32_t)std::round(center[2] - (float)m_zSize  / 2.0f)
-		);
-		nanovdb::Coord newEnd(
-			newStart[0] + m_xSize  - 1,
-			newStart[1] + m_ySize - 1,
-			newStart[2] + m_zSize  - 1
-		);
-		
-		boundingBox = nanovdb::CoordBBox(newStart, newEnd);
-		
-		float curScaleX = curWidth  / (float)m_xSize;
-		float curScaleY = curHeight / (float)m_ySize;
-		float curScaleZ = curDepth  / (float)m_zSize;
-		
-		divScaleX = curScaleX < 1.0f;
-		divScaleY = curScaleY < 1.0f;
-		divScaleZ = curScaleZ < 1.0f;
-		scaleX = (uint32_t)std::roundf(divScaleX ? (1.0f / curScaleX) : curScaleX);
-		scaleY = (uint32_t)std::roundf(divScaleY ? (1.0f / curScaleY) : curScaleY);
-		scaleZ = (uint32_t)std::roundf(divScaleZ ? (1.0f / curScaleZ) : curScaleZ);
-	}
-
+std::unique_ptr<SPLVEncoder::Frame> SPLVEncoder::create_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox)
+{
 	//get size of region:
 	//---------------
 	int32_t minX = (int32_t)std::round(boundingBox.min().asVec3d()[0]);
@@ -118,20 +82,17 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 
 	//initialize map and bricks vector:
 	//---------------
-	uint32_t mapXSize = xSize  / BRICK_SIZE;
+	uint32_t mapXSize = xSize / BRICK_SIZE;
 	uint32_t mapYSize = ySize / BRICK_SIZE;
-	uint32_t mapZSize = zSize  / BRICK_SIZE;
+	uint32_t mapZSize = zSize / BRICK_SIZE;
 	
 	uint32_t mapLen = mapXSize * mapYSize * mapZSize;
-	mapLen = (mapLen + 31) & (~31); //round up to multiple of 32 (sizeof(uint32_t))
-	mapLen /= 4; //4 bytes per uint32_t
-	mapLen /= 8; //8 bits per byte
 
-	std::unique_ptr<uint32_t[]> map = std::unique_ptr<uint32_t[]>(new uint32_t[mapLen]);
-	std::vector<Brick> bricks;
+	std::unique_ptr<Frame> frame = std::make_unique<Frame>();
+	frame->map = std::unique_ptr<uint32_t[]>(new uint32_t[mapLen]);
 
-	//initialize map and bricks vector:
-	//---------------
+	//TODO fix this!!!!!
+
 	uint32_t mapSize[3] = {mapXSize, mapYSize, mapZSize};
 
 	uint32_t mapWidth  = mapSize[(uint32_t)m_lrAxis];
@@ -142,30 +103,20 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 	//---------------
 	auto accessor = grid->getAccessor();
 
-	//TODO: create bricks in morton order and add RLE
-
-	//we are creating bricks in xyz order, we MUST make sure to read it back in the same order
-	for(uint32_t mapX = 0; mapX < mapWidth;  mapX++)
-	for(uint32_t mapY = 0; mapY < mapHeight; mapY++)
 	for(uint32_t mapZ = 0; mapZ < mapDepth;  mapZ++)
+	for(uint32_t mapY = 0; mapY < mapHeight; mapY++)
+	for(uint32_t mapX = 0; mapX < mapWidth;  mapX++)
 	{
 		Brick brick;
 		bool brickCreated = false;
 
-		//we are calling set_voxel in morton order, we MUST make sure to read it back in the same order
-		for(uint32_t i = 0; i < BRICK_SIZE * BRICK_SIZE * BRICK_SIZE; i++)
+		for(uint32_t z = 0; z < BRICK_SIZE; z++)
+		for(uint32_t y = 0; y < BRICK_SIZE; y++)
+		for(uint32_t x = 0; x < BRICK_SIZE; x++)
 		{
-			uint32_t x = MORTON_TO_COORDINATE[i].x;
-			uint32_t y = MORTON_TO_COORDINATE[i].y;
-			uint32_t z = MORTON_TO_COORDINATE[i].z;
-
 			int32_t readX = mapX * BRICK_SIZE + x + minX;
 			int32_t readY = mapY * BRICK_SIZE + y + minY;
 			int32_t readZ = mapZ * BRICK_SIZE + z + minZ;
-
-			readX = divScaleX ? (readX / scaleX) : (readX * scaleX);
-			readY = divScaleY ? (readY / scaleY) : (readY * scaleY);
-			readZ = divScaleZ ? (readZ / scaleZ) : (readZ * scaleZ);
 
 			int32_t readCoord[3] = {readX, readY, readZ};
 			nanovdb::Coord readCoordNVDB(
@@ -181,45 +132,107 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 			
 			nanovdb::Vec3f normColor = accessor.getValue(readCoordNVDB);
 			Color color((uint8_t)std::roundf(normColor[0] * 255.0f), (uint8_t)std::roundf(normColor[1] * 255.0f), (uint8_t)std::roundf(normColor[2] * 255.0f));
-			brick.add_voxel(x, y, z, color);
+			brick.set_voxel(x, y, z, color);
 		}
 
+		uint32_t mapIdx = mapX + mapWidth * (mapY + mapHeight * mapZ);
+		
+		if(brickCreated)
+		{
+			frame->map[mapIdx] = (uint32_t)frame->bricks.size();
+			frame->bricks.push_back(std::move(brick));
+		}
+		else
+			frame->map[mapIdx] = EMPTY_BRICK;
+	}
+
+	//return:
+	//---------------
+	return frame;
+}
+
+void SPLVEncoder::encode_frame(std::unique_ptr<Frame> frame)
+{
+	//compress map (convert to bitmap):
+	//---------------
+	uint32_t mapXSize = m_xSize / BRICK_SIZE;
+	uint32_t mapYSize = m_ySize / BRICK_SIZE;
+	uint32_t mapZSize = m_zSize / BRICK_SIZE;
+	
+	uint32_t mapLenBitmap = mapXSize * mapYSize * mapZSize;
+	mapLenBitmap = (mapLenBitmap + 31) & (~31); //round up to multiple of 32 (sizeof(uint32_t))
+	mapLenBitmap /= 4; //4 bytes per uint32_t
+	mapLenBitmap /= 8; //8 bits per byte
+
+	//automatically 0-initialized
+	std::unique_ptr<uint32_t[]> mapBitmap = std::unique_ptr<uint32_t[]>(new uint32_t[mapLenBitmap]());
+	std::vector<std::reference_wrapper<Brick>> bricksOrdered = {};
+
+	uint32_t mapSize[3] = {mapXSize, mapYSize, mapZSize};
+
+	uint32_t mapWidth  = mapSize[(uint32_t)m_lrAxis];
+	uint32_t mapHeight = mapSize[(uint32_t)m_udAxis];
+	uint32_t mapDepth  = mapSize[(uint32_t)m_fbAxis];
+
+	//we are writing bricks in xyz order, we MUST make sure to read them back in the same order
+	for(uint32_t mapX = 0; mapX < mapWidth;  mapX++)
+	for(uint32_t mapY = 0; mapY < mapHeight; mapY++)
+	for(uint32_t mapZ = 0; mapZ < mapDepth;  mapZ++)
+	{
 		uint32_t mapIdx = mapX + mapWidth * (mapY + mapHeight * mapZ);
 		uint32_t mapIdxArr = mapIdx / 32;
 		uint32_t mapIdxBit = mapIdx % 32;
 		
-		if(brickCreated)
+		if(frame->map[mapIdx] != EMPTY_BRICK)
 		{
-			map[mapIdxArr] |= (1u << mapIdxBit);
-			bricks.push_back(std::move(brick));
+			mapBitmap[mapIdxArr] |= (1u << mapIdxBit);
+			bricksOrdered.push_back(frame->bricks[frame->map[mapIdx]]);
 		}
 		else
-			map[mapIdxArr] &= ~(1u << mapIdxBit);
+			mapBitmap[mapIdxArr] &= ~(1u << mapIdxBit);
 	}
 
-	//print compression info:
+	//sanity check
+	if(frame->bricks.size() != bricksOrdered.size())
+		throw std::runtime_error("number of bricks in raw frame and encoded frame do not match!");
+
+	//write frame:
 	//---------------
 	#if PRINT_INFO
 	{
-		uint32_t mapBytes = mapLen * sizeof(uint32_t);
-		
+		uint32_t numBricks = (uint32_t)bricksOrdered.size();
+
+		m_outFile.write((const char*)&numBricks, sizeof(uint32_t));
+		m_outFile.write((const char*)mapBitmap.get(), mapLenBitmap * sizeof(uint32_t));
+
+		uint32_t mapBytes = mapLenBitmap * sizeof(uint32_t);
+		uint32_t brickVoxelCounts = 0;
+		uint32_t brickBytes = 0;
 		uint32_t brickBytesBitmap = 0;
 		uint32_t brickBytesColors = 0;
-		for(uint32_t i = 0; i < bricks.size(); i++)
+		for(uint32_t i = 0; i < bricksOrdered.size(); i++)
 		{
-			brickBytesBitmap += bricks[i].serialized_size_bitmap();
-			brickBytesColors += bricks[i].serialized_size_colors();
+			uint32_t voxelCount;
+			uint32_t size;
+			uint32_t sizeBitmap;
+			uint32_t sizeColors;
+
+			bricksOrdered[i].get().serialize_verbose(m_outFile, voxelCount, size, sizeBitmap, sizeColors);
+
+			brickVoxelCounts += voxelCount;
+			brickBytes += size;
+			brickBytesBitmap += sizeBitmap;
+			brickBytesColors += sizeColors;
 		}
 
-		uint32_t brickBytes = brickBytesBitmap + brickBytesColors;
 		uint32_t totalBytes = brickBytes + mapBytes;
 
-		float brickBytesAvg = (float)brickBytes / (float)bricks.size();
-		float brickBytesAvgBitmap = (float)brickBytesBitmap / (float)bricks.size();
-		float brickBytesAvgColors = (float)brickBytesColors / (float)bricks.size();
+		float brickBytesAvg = (float)brickBytes / (float)numBricks;
+		float brickBytesAvgBitmap = (float)brickBytesBitmap / (float)numBricks;
+		float brickBytesAvgColors = (float)brickBytesColors / (float)numBricks;
 
 		std::cout << "FRAME " << m_frameCount << "\n";
-		std::cout << "\t- Number of Bricks: " << bricks.size() << "\n";
+		std::cout << "\t- Number of Bricks: " << numBricks << "\n";
 		std::cout << "\t- Map Bytes: " << mapBytes << " (" << ((float)mapBytes / (float)totalBytes) * 100.0 << "%)\n";
 		std::cout << "\t- Total Brick Bytes: " << brickBytes << " (" << ((float)brickBytes / (float)totalBytes) * 100.0 << "%)\n";
 		std::cout << "\t\t- From Bitmaps: " << brickBytesBitmap << " (" << ((float)brickBytesBitmap / (float)brickBytes) * 100.0 << "%)\n";
@@ -228,20 +241,16 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 		std::cout << "\t\t- From Bitmaps: " << brickBytesAvgBitmap << " (" << (brickBytesAvgBitmap / brickBytesAvg) * 100.0 << "%)\n";
 		std::cout << "\t\t- From Colors: " << brickBytesAvgColors << " (" << (brickBytesAvgColors / brickBytesAvg) * 100.0 << "%)\n";
 	}
+	#else
+	{
+		uint32_t numBricks = (uint32_t)bricksOrdered.size();
+
+		m_outFile.write((const char*)&numBricks, sizeof(uint32_t));
+		m_outFile.write((const char*)mapBitmap.get(), mapLenBitmap * sizeof(uint32_t));
+		for(uint32_t i = 0; i < bricksOrdered.size(); i++)
+			bricksOrdered[i].get().serialize(m_outFile);
+	}
 	#endif
-
-	//write frame:
-	//---------------
-	uint32_t numBricks = (uint32_t)bricks.size();
-
-	m_outFile.write((const char*)&numBricks, sizeof(uint32_t));
-	m_outFile.write((const char*)map.get(), mapLen * sizeof(uint32_t));
-	for(uint32_t i = 0; i < bricks.size(); i++)
-		bricks[i].serialize(m_outFile);
-
-	//increase frame count:
-	//---------------
-	m_frameCount++;
 }
 
 void SPLVEncoder::finish()

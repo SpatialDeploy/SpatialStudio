@@ -11,7 +11,7 @@ class PySPLVEncoder
 public:
 	PySPLVEncoder(uint32_t width, uint32_t height, uint32_t depth, std::string lrAxis, std::string udAxis, std::string fbAxis, float framerate, std::string outPath);
 
-	void add_nvdb_frame(std::string path, uint32_t minX, uint32_t minY, uint32_t minZ, uint32_t maxX, uint32_t maxY, uint32_t maxZ, bool scaleToFit = false);
+	void add_nvdb_frame(std::string path, uint32_t minX, uint32_t minY, uint32_t minZ, uint32_t maxX, uint32_t maxY, uint32_t maxZ);
 
 	void finish();
 

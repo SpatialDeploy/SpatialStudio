@@ -183,7 +183,6 @@ int main(int argc, const char** argv)
 
 	//check for commands in loop:
 	//---------------
-	bool scaleToFit = false;
 	int32_t minX = 0;
 	int32_t minY = 0; 
 	int32_t minZ = 0;
@@ -219,7 +218,7 @@ int main(int argc, const char** argv)
 				if(!grid)
 					throw std::runtime_error("NVDB file specified did not contain a Vec3f grid");
 
-				encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)), scaleToFit);
+				encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)));
 			}
 			catch(std::exception e)
 			{
@@ -245,7 +244,7 @@ int main(int argc, const char** argv)
 		}
 		else if(command == "s")
 		{
-			std::string option;
+			/*std::string option;
 			if(!(stream >> option))
 			{
 				std::cout << "ERROR: no parameter given to \"s\"" << std::endl;
@@ -260,7 +259,7 @@ int main(int argc, const char** argv)
 			{
 				std::cout << "ERROR: invalud parameter given to \"s\" (expects \"on\" or \"off\")" << std::endl;
 				continue;	
-			}
+			}*/
 		}
 		else if(command == "f")
 		{

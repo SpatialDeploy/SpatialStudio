@@ -5,66 +5,50 @@
 
 //-------------------------------------------//
 
-Brick::Brick() : m_voxelCount(0)
+Brick::Brick()
 {
 	m_bitmap = std::unique_ptr<uint32_t[]>(new uint32_t[bitmap_len()]()); //0-initializes bitmap
-	m_colors = {};
+	m_colors = std::unique_ptr<Color[]>(new Color[colors_len()]);
 }
 
-void Brick::add_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color)
+void Brick::set_voxel(uint32_t x, uint32_t y, uint32_t z, const Color& color)
 {
 	uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
 	m_bitmap[idx / 32] |= 1 << (idx % 32);
-	
-	m_colors.push_back(color.r);
-	m_colors.push_back(color.g);
-	m_colors.push_back(color.b);
+	m_colors[idx] = color;
+}
 
-	m_voxelCount++;
+void Brick::unset_voxel(uint32_t x, uint32_t y, uint32_t z)
+{
+	uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
+	m_bitmap[idx / 32] &= ~(1 << (idx % 32));
 }
 
 void Brick::serialize(std::ofstream& file)
 {
-	file.write((const char*)&m_voxelCount, sizeof(uint32_t));
-	serialize_bitmap(&file);
-	file.write((const char*)m_colors.data(), m_voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t));
+	uint32_t dummyVoxelCount;
+	uint32_t dummySize;
+	uint32_t dummySizeBitmap;
+	uint32_t dummySizeColors;
+
+	serialize_verbose(file, dummyVoxelCount, dummySize, dummySizeBitmap, dummySizeColors);
 }
 
-uint32_t Brick::get_voxel_count()
-{
-	return m_voxelCount;
-}
-
-uint32_t Brick::serialized_size()
-{
-	return serialized_size_bitmap() + serialized_size_colors();
-}
-
-uint32_t Brick::serialized_size_bitmap()
-{
-	return serialize_bitmap(nullptr);
-}
-
-uint32_t Brick::serialized_size_colors()
-{
-	return sizeof(uint32_t) + m_voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t);
-}
-
-uint32_t Brick::serialize_bitmap(std::ofstream* file)
+void Brick::serialize_verbose(std::ofstream& file, uint32_t& voxCount, uint32_t& size, uint32_t& sizeBitmap, uint32_t& sizeColors)
 {
 	//initialize bytes:
 	//---------------
+	uint32_t voxelCount = 0;
+	std::vector<uint8_t> bitmapBytes; //TODO: find more performent soln than a vector
+	std::vector<uint8_t> colorBytes;
 
-	//TODO: find more performent soln than a vector
-	std::vector<uint8_t> bytes;
-
-	uint8_t curByte;
+	uint8_t curBitmapByte; //for RLE
 	if((m_bitmap[0] & 1) != 0)
-		curByte = 0x80;
+		curBitmapByte = 0x80;
 	else
-		curByte = 0x00;
+		curBitmapByte = 0x00;
 
-	//calculate RLE:
+	//iterate over brick, perform RLE on bitmap and add colors:
 	//---------------
 
 	//we do RLE in morton order, we MUST make sure to read it back in the same order
@@ -78,31 +62,46 @@ uint32_t Brick::serialize_bitmap(std::ofstream* file)
 		uint32_t idxArr = idx / 32;
 		uint32_t idxBit = idx % 32;
 
+		//update RLE
 		bool filled = (m_bitmap[idxArr] & (1u << idxBit)) != 0;
 
-		if(filled != ((curByte & (1 << 7u)) != 0) || (curByte & 0x7f) == 127)
+		if(filled != ((curBitmapByte & (1 << 7u)) != 0) || (curBitmapByte & 0x7f) == 127)
 		{
-			bytes.push_back(curByte);
+			bitmapBytes.push_back(curBitmapByte);
 
 			if(filled)
-				curByte = 0x80;
+				curBitmapByte = 0x80;
 			else
-				curByte = 0x00;
+				curBitmapByte = 0x00;
 		}
 
-		curByte++;
+		curBitmapByte++;
+
+		//add color if filled
+		if(filled)
+		{
+			colorBytes.push_back(m_colors[idx].r);
+			colorBytes.push_back(m_colors[idx].g);
+			colorBytes.push_back(m_colors[idx].b);
+
+			voxelCount++;
+		}
 	}
 
-	bytes.push_back(curByte);
+	bitmapBytes.push_back(curBitmapByte);
 
-	//write bytes:
+	//write:
 	//---------------
-	if(file != nullptr)
-		file->write((const char*)bytes.data(), bytes.size() * sizeof(uint8_t));
+	file.write((const char*)&voxelCount, sizeof(uint32_t));
+	file.write((const char*)bitmapBytes.data(), bitmapBytes.size() * sizeof(uint8_t));
+	file.write((const char*)colorBytes.data(), voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t));
 
-	//return:
+	//output size info:
 	//---------------
-	return (uint32_t)bytes.size() * sizeof(uint8_t);
+	voxCount = voxelCount;
+	sizeBitmap = (uint32_t)bitmapBytes.size() * sizeof(uint8_t);
+	sizeColors = voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t) + sizeof(uint32_t);
+	size = sizeBitmap + sizeColors;
 }
 
 uint32_t Brick::bitmap_len()
@@ -114,4 +113,9 @@ uint32_t Brick::bitmap_len()
 	bitmapLen /= 8; //8 bits per byte
 
 	return bitmapLen;
+}
+
+uint32_t Brick::colors_len()
+{
+	return BRICK_SIZE * BRICK_SIZE * BRICK_SIZE;
 }
