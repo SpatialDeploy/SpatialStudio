@@ -24,6 +24,17 @@ void Brick::unset_voxel(uint32_t x, uint32_t y, uint32_t z)
 	m_bitmap[idx / 32] &= ~(1 << (idx % 32));
 }
 
+bool Brick::voxel_set(uint32_t x, uint32_t y, uint32_t z) const
+{
+	uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
+	return (m_bitmap[idx / 32] & (1 << (idx % 32))) != 0;
+}
+
+bool Brick::voxel_set(uint32_t idx) const
+{
+	return (m_bitmap[idx / 32] & (1 << (idx % 32))) != 0;
+}
+
 void Brick::serialize(std::ofstream& file)
 {
 	uint32_t dummyVoxelCount;

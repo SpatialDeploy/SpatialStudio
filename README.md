@@ -29,7 +29,8 @@ for i in range(0, 60):
 		minZ=0,
 		maxX=63,
 		maxY=63,
-		maxZ=63
+		maxZ=63,
+		removeNonvisible=True
 	)
 
 encoder.finish()
@@ -41,9 +42,10 @@ An encoder is first created with `splv.SPLVEncoder(xSize, ySize, zSize, lrAxis, 
 - `framerate` defines the frames per second. 
 - `outputPath` defines the path to the output spatial file.
 
-A frame is added using the `splv.Encoder.add_frame(path, minX, minY, minZ, maxX, maxY, maxZ)` function. 
+A frame is added using the `splv.Encoder.add_frame(path, minX, minY, minZ, maxX, maxY, maxZ, removeNonvisible=False)` function. 
 - `path` defines the path to the `nvdb` file to add. 
 - `min*` and `max*` define the bounding box of the frame within the `nvdb`
+- `removeNonvisible` controls whether the encoder automatically detects and removes non-visible voxels before encoding. This can significantly increase encoding time, so only enable it if your frames have many non-visible voxels.
 
 Once all frames have been added, you must call `splv.Encoder.finish()` to complete encoding. After `finish()` has been called, the encoder is invalid and no more frames can be added.
 
@@ -54,7 +56,7 @@ The CLI must be called with `./splv_encoder -d [xSize] [ySize] [zSize] -a [lrAxi
 - `framerate` defines the frames per second. 
 - `outputPath` defines the path to the output spatial file.
 
-Once in the CLI, a frame can be added be entering `a [pathToNVDB]`, where `pathToNVDB` is the path to the `nvdb` you wish to add. The bounding box within the `nvdb` to add can be set with the command `b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]`, which sets the bounding box for all subsequent frames. The default is `b 0 0 0 width-1 height-1 depth-1`.
+Once in the CLI, a frame can be added be entering `a [pathToNVDB]`, where `pathToNVDB` is the path to the `nvdb` you wish to add. The bounding box within the `nvdb` to add can be set with the command `b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]`, which sets the bounding box for all subsequent frames. The default is `b 0 0 0 width-1 height-1 depth-1`. To enable/disable the automatic removal of non-visible voxels for all subsequent frames, use the command `r [on/off]`. This can increase encoding time, so only use it if your frames have many non-visible voxels.
 
 Once all the frames have been added, you must enter `f` to finish encoding, at which point no more frames can be added. Alternatively, if you wish to exit the CLI without finishing the encoding, you can enter `q`.
 

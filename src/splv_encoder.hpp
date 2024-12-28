@@ -25,7 +25,7 @@ class SPLVEncoder
 public:
 	SPLVEncoder(uint32_t xSize, uint32_t ySize, uint32_t zSize, Axis lrAxis, Axis udAxis, Axis fbAxis, float framerate, std::ofstream& outFile);
 
-	void add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox);
+	void add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox, bool removeNonvisible);
 	void finish();
 
 private:
@@ -52,6 +52,7 @@ private:
 	};
 
 	std::unique_ptr<Frame> create_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox);
+	std::unique_ptr<Frame> remove_nonvisible_voxels(std::unique_ptr<Frame> frame);
 	void encode_frame(std::unique_ptr<Frame> frame);
 };
 

@@ -176,7 +176,7 @@ int main(int argc, const char** argv)
 	std::cout << "===================================" << std::endl;
 	std::cout << "- \"a [path/to/nvdb]\"" << std::endl;
 	std::cout << "- \"b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]\" to set the bounding box of all subsequent frames" << std::endl;
-	std::cout << "- \"s [on/off]\" to enable/disable scale to fit on all subsequent frames" << std::endl;
+	std::cout << "- \"r [on/off]\" to enable/disable removal of nonvisible voxels (increases encoding time)" << std::endl;
 	std::cout << "- \"f\" to finish encoding and exit program" << std::endl;
 	std::cout << "- \"q\" to exit program without finishing encoding" << std::endl;
 	std::cout << std::endl;
@@ -189,6 +189,7 @@ int main(int argc, const char** argv)
 	int32_t maxX = xSize - 1;
 	int32_t maxY = ySize - 1;
 	int32_t maxZ = zSize - 1;
+	bool removeNonvisible = false;
 
 	while(true)
 	{
@@ -218,7 +219,7 @@ int main(int argc, const char** argv)
 				if(!grid)
 					throw std::runtime_error("NVDB file specified did not contain a Vec3f grid");
 
-				encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)));
+				encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)), removeNonvisible);
 			}
 			catch(std::exception e)
 			{
@@ -242,24 +243,24 @@ int main(int argc, const char** argv)
 			maxY = newMaxY;
 			maxZ = newMaxZ;
 		}
-		else if(command == "s")
+		else if(command == "r")
 		{
-			/*std::string option;
+			std::string option;
 			if(!(stream >> option))
 			{
-				std::cout << "ERROR: no parameter given to \"s\"" << std::endl;
+				std::cout << "ERROR: no parameter given to \"r\"" << std::endl;
 				continue;
 			}
 
 			if(option == "on")
-				scaleToFit = true;
+				removeNonvisible = true;
 			else if(option == "off")
-				scaleToFit = false;
+				removeNonvisible = false;
 			else
 			{
-				std::cout << "ERROR: invalud parameter given to \"s\" (expects \"on\" or \"off\")" << std::endl;
+				std::cout << "ERROR: invalud parameter given to \"r\" (expects \"on\" or \"off\")" << std::endl;
 				continue;	
-			}*/
+			}
 		}
 		else if(command == "f")
 		{

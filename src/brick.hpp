@@ -25,6 +25,10 @@ public:
 	//sets a given voxel to be empty
 	void unset_voxel(uint32_t x, uint32_t y, uint32_t z);
 
+	//checks whether a given voxel is set
+	bool voxel_set(uint32_t x, uint32_t y, uint32_t z) const;
+	bool voxel_set(uint32_t idx) const;
+
 	//serializes the brick, performing any per-brick compression
 	void serialize(std::ofstream& file);
 	void serialize_verbose(std::ofstream& file, uint32_t& voxelCount, uint32_t& size, uint32_t& sizeBitmap, uint32_t& sizeColors);

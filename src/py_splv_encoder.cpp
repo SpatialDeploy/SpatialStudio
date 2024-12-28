@@ -18,7 +18,7 @@ PySPLVEncoder::PySPLVEncoder(uint32_t xSize, uint32_t ySize, uint32_t zSize, std
 	m_encoder = std::make_unique<SPLVEncoder>(xSize, ySize, zSize, parse_axis(lrAxis), parse_axis(udAxis), parse_axis(fbAxis), framerate, m_outFile);
 }
 
-void PySPLVEncoder::add_nvdb_frame(std::string path, uint32_t minX, uint32_t minY, uint32_t minZ, uint32_t maxX, uint32_t maxY, uint32_t maxZ)
+void PySPLVEncoder::add_nvdb_frame(std::string path, uint32_t minX, uint32_t minY, uint32_t minZ, uint32_t maxX, uint32_t maxY, uint32_t maxZ, bool removeNonvisible)
 {
 	try
 	{
@@ -27,7 +27,7 @@ void PySPLVEncoder::add_nvdb_frame(std::string path, uint32_t minX, uint32_t min
 		if(!grid)
 			throw std::runtime_error("NVDB file specified did not contain a Vec3f grid");
 
-		m_encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)));
+		m_encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)), removeNonvisible);
 	}
 	catch(std::exception e)
 	{
@@ -78,6 +78,7 @@ PYBIND11_MODULE(py_splv_encoder, m) {
 			 py::arg("maxX"),
 			 py::arg("maxY"),
 			 py::arg("maxZ"),
+			 py::arg("removeNonvisible") = false,
              "Add a frame from an NVDB file")
         .def("finish", &PySPLVEncoder::finish,
              "Finish encoding and close the output file");

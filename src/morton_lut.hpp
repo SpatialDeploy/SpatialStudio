@@ -3,19 +3,11 @@
 
 #include <stdint.h>
 #include "brick.hpp"
+#include "helper.hpp"
 
 //-------------------------------------------//
 
-struct Coordinate
-{
-	uint8_t x;
-	uint8_t y;
-	uint8_t z;
-};
-
-//-------------------------------------------//
-
-const Coordinate MORTON_TO_COORDINATE[BRICK_SIZE * BRICK_SIZE * BRICK_SIZE] = {
+const Coordinate8 MORTON_TO_COORDINATE[BRICK_SIZE * BRICK_SIZE * BRICK_SIZE] = {
 	{ 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 }, { 1, 1, 0 }, { 0, 0, 1 }, { 1, 0, 1 }, { 0, 1, 1 }, { 1, 1, 1 },
 	{ 2, 0, 0 }, { 3, 0, 0 }, { 2, 1, 0 }, { 3, 1, 0 }, { 2, 0, 1 }, { 3, 0, 1 }, { 2, 1, 1 }, { 3, 1, 1 },
 	{ 0, 2, 0 }, { 1, 2, 0 }, { 0, 3, 0 }, { 1, 3, 0 }, { 0, 2, 1 }, { 1, 2, 1 }, { 0, 3, 1 }, { 1, 3, 1 },
