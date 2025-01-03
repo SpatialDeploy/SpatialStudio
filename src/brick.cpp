@@ -35,17 +35,17 @@ bool Brick::voxel_set(uint32_t idx) const
 	return (m_bitmap[idx / 32] & (1 << (idx % 32))) != 0;
 }
 
-void Brick::serialize(std::ofstream& file)
+void Brick::serialize(std::ostream& out)
 {
 	uint32_t dummyVoxelCount;
 	uint32_t dummySize;
 	uint32_t dummySizeBitmap;
 	uint32_t dummySizeColors;
 
-	serialize_verbose(file, dummyVoxelCount, dummySize, dummySizeBitmap, dummySizeColors);
+	serialize_verbose(out, dummyVoxelCount, dummySize, dummySizeBitmap, dummySizeColors);
 }
 
-void Brick::serialize_verbose(std::ofstream& file, uint32_t& voxCount, uint32_t& size, uint32_t& sizeBitmap, uint32_t& sizeColors)
+void Brick::serialize_verbose(std::ostream& out, uint32_t& voxCount, uint32_t& size, uint32_t& sizeBitmap, uint32_t& sizeColors)
 {
 	//initialize bytes:
 	//---------------
@@ -103,9 +103,9 @@ void Brick::serialize_verbose(std::ofstream& file, uint32_t& voxCount, uint32_t&
 
 	//write:
 	//---------------
-	file.write((const char*)&voxelCount, sizeof(uint32_t));
-	file.write((const char*)bitmapBytes.data(), bitmapBytes.size() * sizeof(uint8_t));
-	file.write((const char*)colorBytes.data(), voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t));
+	out.write((const char*)&voxelCount, sizeof(uint32_t));
+	out.write((const char*)bitmapBytes.data(), bitmapBytes.size() * sizeof(uint8_t));
+	out.write((const char*)colorBytes.data(), voxelCount * NUM_COLOR_COMPONENTS * sizeof(uint8_t));
 
 	//output size info:
 	//---------------

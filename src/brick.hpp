@@ -30,8 +30,8 @@ public:
 	bool voxel_set(uint32_t idx) const;
 
 	//serializes the brick, performing any per-brick compression
-	void serialize(std::ofstream& file);
-	void serialize_verbose(std::ofstream& file, uint32_t& voxelCount, uint32_t& size, uint32_t& sizeBitmap, uint32_t& sizeColors);
+	void serialize(std::ostream& out);
+	void serialize_verbose(std::ostream& out, uint32_t& voxelCount, uint32_t& size, uint32_t& sizeBitmap, uint32_t& sizeColors);
 
 private:
 	std::unique_ptr<uint32_t[]> m_bitmap;

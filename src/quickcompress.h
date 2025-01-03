@@ -152,7 +152,7 @@ void qc_buffer_free(QCbuffer buf);
 	#define QC_NUM_STATE_BITS 32
 #endif
 
-#define QC_FULL_RANGE    (1Ui64 << QC_NUM_STATE_BITS)
+#define QC_FULL_RANGE    (1ull << QC_NUM_STATE_BITS)
 #define QC_HALF_RANGE    (QC_FULL_RANGE >> 1)
 #define QC_QUARTER_RANGE (QC_FULL_RANGE >> 2)
 #define QC_MIN_RANGE     (QC_QUARTER_RANGE + 2)
@@ -578,9 +578,15 @@ size_t qc_file_write(void* buf, size_t elemSize, size_t elemCount, void* file)
 
 QCerror qc_compress_buffer_to_file(QCbuffer in, const char* outPath)
 {
+#ifdef __EMSCRIPTEN__
+	FILE* outFile = fopen(outPath, "wb");
+	if(!outFile)
+		return QC_ERROR_FILE_OPEN;
+#else
 	FILE* outFile;
 	if(fopen_s(&outFile, outPath, "wb") != 0)
 		return QC_ERROR_FILE_OPEN;
+#endif
 
 	QCinput input = {
 		qc_buffer_read,
@@ -601,9 +607,15 @@ QCerror qc_compress_buffer_to_file(QCbuffer in, const char* outPath)
 
 QCerror qc_decompress_file_to_buffer(const char* inPath, QCbuffer* out)
 {
+#ifdef __EMSCRIPTEN__
+	FILE* inFile = fopen(inPath, "rb");
+	if(!inFile)
+		return QC_ERROR_FILE_OPEN;
+#else
 	FILE* inFile;
 	if(fopen_s(&inFile, inPath, "rb") != 0)
 		return QC_ERROR_FILE_OPEN;
+#endif
 
 	QCinput input = {
 		qc_file_read,
