@@ -1,63 +1,15 @@
 #include "splv_encoder.hpp"
 
 #include <vector>
-#include "morton_lut.hpp"
 #include <queue>
 #include <iostream>
+#include "morton_lut.hpp"
+#include "uint8_vector_stream.hpp"
 
 #define QC_IMPLEMENTATION
 #include "quickcompress.h"
 
 //-------------------------------------------//
-
-class Uint8VectorStream : public std::basic_ostream<char>
-{
-private:
-	class Uint8VectorStreamBuf : public std::streambuf
-	{
-	private:
-		std::vector<uint8_t>& m_vec;
-
-	protected:
-		virtual int_type overflow(int_type ch = traits_type::eof()) override 
-		{
-			if(ch != traits_type::eof())
-				m_vec.push_back(static_cast<uint8_t>(ch));
-
-			return ch;
-		}
-
-		virtual std::streamsize xsputn(const char* s, std::streamsize n) override 
-		{
-			size_t old_size = m_vec.size();
-			m_vec.resize(old_size + n);
-			std::memcpy(m_vec.data() + old_size, s, n);
-			return n;
-		}
-
-	public:
-		explicit Uint8VectorStreamBuf(std::vector<uint8_t>& vec)
-			: m_vec(vec)
-		{
-
-		}
-	};
-
-	Uint8VectorStreamBuf m_streambuf;
-
-public:
-	explicit Uint8VectorStream(std::vector<uint8_t>& vec)
-		: std::basic_ostream<char>(&m_streambuf), m_streambuf(vec)
-	{
-
-	}
-};
-
-struct Uint8VectorReader
-{
-	uint64_t numRead;
-	std::vector<uint8_t>* vec;
-};
 
 struct SPLVHeader
 {
@@ -69,12 +21,6 @@ struct SPLVHeader
 	float duration;
 	uint64_t frameTablePtr;
 };
-
-//-------------------------------------------//
-
-//for IO with quickcompress
-size_t uint8_vector_read(void* buf, size_t elemCount, size_t elemSize, void* data);
-size_t ostream_write(void* buf, size_t elemCount, size_t elemSize, void* data);
 
 //-------------------------------------------//
 
@@ -538,7 +484,7 @@ void SPLVEncoder::encode_frame(std::unique_ptr<Frame> frame)
 	uint32_t numBricks = (uint32_t)bricksOrdered.size();
 
 	std::vector<uint8_t> frameBuf;
-	Uint8VectorStream frameStream(frameBuf);
+	Uint8VectorOStream frameStream(frameBuf);
 
 	frameStream.write((const char*)&numBricks, sizeof(uint32_t));
 	frameStream.write((const char*)mapBitmap.get(), mapLenBitmap * sizeof(uint32_t));
@@ -550,59 +496,7 @@ void SPLVEncoder::encode_frame(std::unique_ptr<Frame> frame)
 	uint64_t framePtr = m_outFile.tellp();
 	m_framePtrs.push_back(framePtr);
 
-	Uint8VectorReader reader;
-	reader.numRead = 0;
-	reader.vec = &frameBuf;
-
-	QCinput qcInput;
-	qcInput.read = uint8_vector_read;
-	qcInput.state = &reader;
-
-	std::vector<uint8_t> compressedBuf;
-	Uint8VectorStream compressedStream(compressedBuf);
-
-	QCoutput qcOutput;
-	qcOutput.write = ostream_write;
-	qcOutput.state = &compressedStream;
-
-	if(qc_compress(qcInput, qcOutput) != QC_SUCCESS)
+	Uint8VectorIStream frameStreamDecompressed(frameBuf);
+	if(qc_compress(frameStreamDecompressed, m_outFile) != QC_SUCCESS)
 		throw std::runtime_error("error while compressing frame!");
-
-	uint64_t compressedSize = compressedBuf.size();
-	m_outFile.write((const char*)&compressedSize, sizeof(uint64_t));
-	m_outFile.write((const char*)compressedBuf.data(), compressedSize);
-}
-
-//-------------------------------------------//
-
-size_t uint8_vector_read(void* buf, size_t elemCount, size_t elemSize, void* data)
-{
-	Uint8VectorReader* reader = (Uint8VectorReader*)data;
-
-	size_t numRead = 0;
-	for(size_t i = 0; i < elemCount; i++)
-	{
-		if(reader->vec->size() - reader->numRead < elemSize)
-			break;
-
-		memcpy(buf, &reader->vec->data()[reader->numRead], elemSize);
-		buf = (uint8_t*)buf + elemSize;
-		reader->numRead += elemSize;
-
-		numRead++;
-	}
-
-	return numRead;
-}
-
-size_t ostream_write(void* buf, size_t elemCount, size_t elemSize, void* data)
-{
-	std::ofstream* stream = (std::ofstream*)data;
-
-	stream->write((const char*)buf, elemCount * elemSize);
-
-	if(stream->good())
-		return elemCount;
-	else
-		return 0;
 }
