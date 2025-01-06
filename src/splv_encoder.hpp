@@ -39,6 +39,7 @@ private:
 
 	float m_framerate;
 	uint32_t m_frameCount;
+	std::vector<uint64_t> m_framePtrs;
 
 	bool m_valid;
 	std::ofstream& m_outFile;

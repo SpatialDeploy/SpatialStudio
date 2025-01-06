@@ -3,6 +3,7 @@
 #include <vector>
 #include "morton_lut.hpp"
 #include <queue>
+#include <iostream>
 
 #define QC_IMPLEMENTATION
 #include "quickcompress.h"
@@ -66,6 +67,7 @@ struct SPLVHeader
 	float framerate;
 	uint32_t frameCount;
 	float duration;
+	uint64_t frameTablePtr;
 };
 
 //-------------------------------------------//
@@ -127,6 +129,13 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 
 void SPLVEncoder::finish()
 {
+	//write frame table:
+	//---------------
+	uint64_t frameTablePtr = m_outFile.tellp();
+	m_outFile.write((const char*)m_framePtrs.data(), m_frameCount * sizeof(uint64_t));
+
+	//write header:
+	//---------------
 	SPLVHeader header = {};
 	header.width = m_xSize;
 	header.height = m_ySize;
@@ -134,6 +143,7 @@ void SPLVEncoder::finish()
 	header.framerate = m_framerate;
 	header.frameCount = m_frameCount;
 	header.duration = (float)m_frameCount / m_framerate;
+	header.frameTablePtr = frameTablePtr;
 
 	m_outFile.seekp(std::ios::beg);
 	m_outFile.write((const char*)&header, sizeof(SPLVHeader));
@@ -537,6 +547,9 @@ void SPLVEncoder::encode_frame(std::unique_ptr<Frame> frame)
 
 	//compress serialized frame:
 	//---------------
+	uint64_t framePtr = m_outFile.tellp();
+	m_framePtrs.push_back(framePtr);
+
 	Uint8VectorReader reader;
 	reader.numRead = 0;
 	reader.vec = &frameBuf;
