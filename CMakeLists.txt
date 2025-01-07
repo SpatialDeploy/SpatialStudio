@@ -41,7 +41,7 @@ if(WIN32)
 endif()
 
 # add include directories and libraries
-include_directories("src/" ${pybind11_INCLUDE_DIRS})
+include_directories("include/" ${pybind11_INCLUDE_DIRS})
 # target_link_libraries(${PROJECT_NAME} blosc)
 # Link against Blosc using the imported target
 target_link_libraries(${PROJECT_NAME} PRIVATE Blosc::blosc)
