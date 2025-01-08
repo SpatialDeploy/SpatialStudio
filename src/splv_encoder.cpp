@@ -78,7 +78,7 @@ void SPLVEncoder::add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox bo
 
 	std::shared_ptr<Frame> frame = create_nvdb_frame(grid, boundingBox);
 	if(removeNonvisible)
-		remove_nonvisible_voxels(frame);
+		frame = remove_nonvisible_voxels(frame);
 	
 	encode_frame(frame);
 	m_frameCount++;
@@ -291,7 +291,7 @@ void SPLVEncoder::add_vox_frame(const std::string& path, bool removeNonvisible)
 
 		frame = create_vox_frame(file, sizePtrs[modelIdx], xyziPtrs[modelIdx], palette);
 		if(removeNonvisible)
-			remove_nonvisible_voxels(frame);
+			frame = remove_nonvisible_voxels(frame);
 		
 		encode_frame(frame);
 		m_frameCount++;
@@ -486,257 +486,103 @@ std::shared_ptr<SPLVEncoder::Frame> SPLVEncoder::create_vox_frame(std::ifstream&
 	return frame;
 }
 
-void SPLVEncoder::remove_nonvisible_voxels(std::shared_ptr<Frame> frame)
+std::shared_ptr<SPLVEncoder::Frame> SPLVEncoder::remove_nonvisible_voxels(std::shared_ptr<Frame> frame)
 {
-	//TODO: this function is a mess, refactor
-	//TODO: write some legit tests for this
+	//NOTE: this function considers a voxel nonvisible if all 6 of its neighbors
+	//are filled. However, there can exist nonvisible voxels not satisfying this
+	//(e.g. voxels inside a hollow sphere). We may want to change this back to a flood
+	//fill if these situations are common
 
-	//create data:
+	//define helper functions:
 	//---------------
 	uint32_t mapXSize = m_xSize / BRICK_SIZE;
 	uint32_t mapYSize = m_ySize / BRICK_SIZE;
 	uint32_t mapZSize = m_zSize / BRICK_SIZE;
-
 	uint32_t mapLen = mapXSize * mapYSize * mapZSize;
-	mapLen = (mapLen + 31) & (~31); //round up to multiple of 32 (sizeof(uint32_t))
-	mapLen /= 4; //4 bytes per uint32_t
-	mapLen /= 8; //8 bits per byte
 
-	uint32_t brickLen = BRICK_SIZE * BRICK_SIZE * BRICK_SIZE;
-	brickLen = (brickLen + 31) & (~31); //round up to multiple of 32 (sizeof(uint32_t))
-	brickLen /= 4; //4 bytes per uint32_t
-	brickLen /= 8; //8 bits per byte
+	auto voxel_set = [&](int32_t x, int32_t y, int32_t z) -> bool {
+		if(x < 0 || x >= (int32_t)m_xSize ||
+		   y < 0 || y >= (int32_t)m_ySize ||
+		   x < 0 || z >= (int32_t)m_zSize)
+		   	return false;
+		
+		uint32_t xMap = x / BRICK_SIZE;
+		uint32_t yMap = y / BRICK_SIZE;
+		uint32_t zMap = z / BRICK_SIZE;
+		uint32_t mapIdx = xMap + mapXSize * (yMap + mapYSize * zMap);
 
-	std::queue<Coordinate> bricksToVisit;
-	std::queue<Coordinate> voxelsToVisit;
+		if(frame->map[mapIdx] == EMPTY_BRICK)
+			return false;
 
-	std::unique_ptr<uint32_t[]> mapVisited = std::unique_ptr<uint32_t[]>(new uint32_t[mapLen]());
-	std::vector<std::unique_ptr<uint32_t[]>> bricksVisited;
-	for(uint32_t i = 0; i < frame->bricks.size(); i++)
-		bricksVisited.push_back(std::unique_ptr<uint32_t[]>(new uint32_t[brickLen]()));
+		Brick& brick = frame->bricks[frame->map[mapIdx]];
+		uint32_t xBrick = x % BRICK_SIZE;
+		uint32_t yBrick = y % BRICK_SIZE;
+		uint32_t zBrick = z % BRICK_SIZE;
 
-	//declare helper funcs:
+		return brick.get_voxel(xBrick, yBrick, zBrick);
+	};
+
+	//create new frame:
 	//---------------
-	enum class Direction
+	std::shared_ptr<Frame> newFrame = std::make_shared<Frame>();
+	newFrame->map = std::unique_ptr<uint32_t[]>(new uint32_t[mapLen]);
+
+	//add visible voxels to new frame:
+	//---------------
+	for(uint32_t zMap = 0; zMap < mapZSize; zMap++)
+	for(uint32_t yMap = 0; yMap < mapYSize; yMap++)
+	for(uint32_t xMap = 0; xMap < mapXSize; xMap++)
 	{
-		POS_X = (1 << 0),
-		NEG_X = (1 << 1),
-		POS_Y = (1 << 2),
-		NEG_Y = (1 << 3),
-		POS_Z = (1 << 4),
-		NEG_Z = (1 << 5)
-	};
+		uint32_t mapIdx = xMap + mapXSize * (yMap + mapYSize * zMap);
 
-	auto maybe_visit_voxel = [&](uint32_t x, uint32_t y, uint32_t z) -> void {
-		
-		//get brick number from map:
-		uint32_t mapX = x / BRICK_SIZE;
-		uint32_t mapY = y / BRICK_SIZE;
-		uint32_t mapZ = z / BRICK_SIZE;
-		uint32_t mapIdx = mapX + mapXSize * (mapY + mapYSize * mapZ);
-
-		uint32_t brickNum = frame->map[mapIdx];
-
-		//if brick is empty and unvisited, visit that brick
-		if(brickNum == EMPTY_BRICK)
+		if(frame->map[mapIdx] == EMPTY_BRICK)
 		{
-			if((mapVisited[mapIdx / 32] & (1 << (mapIdx % 32))) != 0)
-				return;
-
-			bricksToVisit.push({mapX, mapY, mapZ});
-			mapVisited[mapIdx / 32] |= 1 << (mapIdx % 32);
-
-			return;
+			newFrame->map[mapIdx] = EMPTY_BRICK;
+			continue;
 		}
-
-		//otherwise, visit voxel if unvisited, add to queue if empty
-		const Brick& brick = frame->bricks[brickNum];
-
-		uint32_t brickX = x % BRICK_SIZE;
-		uint32_t brickY = y % BRICK_SIZE;
-		uint32_t brickZ = z % BRICK_SIZE;
-		uint32_t brickIdx = brickX + BRICK_SIZE * (brickY + BRICK_SIZE * brickZ);
 		
-		if((bricksVisited[brickNum][brickIdx / 32] & (1 << (brickIdx % 32))) != 0)
-			return;
-
-		bricksVisited[brickNum][brickIdx / 32] |= 1 << (brickIdx % 32);
-	
-		if(!brick.voxel_set(brickIdx))
-			return;
-
-		voxelsToVisit.push({x, y, z});
-	};
-
-	auto maybe_visit_brick_edges = [&](uint32_t mapX, uint32_t mapY, uint32_t mapZ, Direction from) -> void {
+		Brick& brick = frame->bricks[frame->map[mapIdx]];
 		
-		//loop over plane of BRICK_SIZE^2 and maybe visit all voxels
-		uint32_t brickX = mapX * BRICK_SIZE;
-		uint32_t brickY = mapY * BRICK_SIZE;
-		uint32_t brickZ = mapZ * BRICK_SIZE;
-		
-		for(uint32_t i = 0; i < BRICK_SIZE; i++)
-		for(uint32_t j = 0; j < BRICK_SIZE; j++)
+		bool newBrickEmpty = true;
+		Brick newBrick;
+
+		for(uint32_t zBrick = 0; zBrick < BRICK_SIZE; zBrick++)
+		for(uint32_t yBrick = 0; yBrick < BRICK_SIZE; yBrick++)
+		for(uint32_t xBrick = 0; xBrick < BRICK_SIZE; xBrick++)
 		{
-			switch(from)
+			Color color;
+			if(!brick.get_voxel(xBrick, yBrick, zBrick, color))
+				continue;
+
+			int32_t x = xMap * BRICK_SIZE + xBrick;
+			int32_t y = yMap * BRICK_SIZE + yBrick;
+			int32_t z = zMap * BRICK_SIZE + zBrick;
+
+			bool visible = false;
+			visible = visible || !voxel_set(x - 1, y, z);
+			visible = visible || !voxel_set(x + 1, y, z);
+			visible = visible || !voxel_set(x, y - 1, z);
+			visible = visible || !voxel_set(x, y + 1, z);
+			visible = visible || !voxel_set(x, y, z - 1);
+			visible = visible || !voxel_set(x, y, z + 1);
+
+			if(visible)
 			{
-			case Direction::POS_X:
-				maybe_visit_voxel(brickX + BRICK_SIZE - 1, brickY + i, brickZ + j);
-				break;
-			case Direction::NEG_X:
-				maybe_visit_voxel(brickX, brickY + i, brickZ + j);
-				break;
-			case Direction::POS_Y:
-				maybe_visit_voxel(brickX + i, brickY + BRICK_SIZE - 1, brickZ + j);
-				break;
-			case Direction::NEG_Y:
-				maybe_visit_voxel(brickX + i, brickY, brickZ + j);
-				break;
-			case Direction::POS_Z:
-				maybe_visit_voxel(brickX + i, brickY + j, brickZ + BRICK_SIZE - 1);
-				break;
-			case Direction::NEG_Z:
-				maybe_visit_voxel(brickX + i, brickY + j, brickZ);
-				break;
+				newBrick.set_voxel(xBrick, yBrick, zBrick, color);
+				newBrickEmpty = false;
 			}
 		}
-	};
 
-	auto maybe_visit_brick = [&](uint32_t x, uint32_t y, uint32_t z, Direction from) -> void {
-		
-		//if brick is empty, visit it. otherwise, visit its edge voxels:
-		uint32_t idx = x + mapXSize * (y + mapYSize * z);
-		
-		if(frame->map[idx] == EMPTY_BRICK)
+		if(newBrickEmpty)
+			newFrame->map[mapIdx] = EMPTY_BRICK;
+		else
 		{
-			if((mapVisited[idx / 32] & (1 << (idx % 32))) != 0)
-				return;
-				
-			bricksToVisit.push({x, y, z});
-			mapVisited[idx / 32] |= 1 << (idx % 32);
-		}
-		else
-			maybe_visit_brick_edges(x, y, z, from);
-	};
-
-	//add initial bricks/voxels:
-	//---------------
-	for(uint32_t z = 0; z < mapYSize; z++)
-	for(uint32_t y = 0; y < mapYSize; y++)
-	{
-		uint32_t idxPosX = (mapXSize - 1) + mapXSize * (y + mapYSize * z);
-		uint32_t idxNegX = 0 + mapXSize * (y + mapYSize * z);
-
-		if(frame->map[idxPosX] == EMPTY_BRICK)
-			bricksToVisit.push({mapXSize - 1, y, z});
-		else
-			maybe_visit_brick_edges(mapXSize - 1, y, z, Direction::POS_X);
-
-		if(frame->map[idxNegX] == EMPTY_BRICK)
-			bricksToVisit.push({0, y, z});
-		else
-			maybe_visit_brick_edges(0, y, z, Direction::NEG_X);
-	}
-
-	for(uint32_t z = 0; z < mapZSize; z++)
-	for(uint32_t x = 0; x < mapXSize; x++)
-	{
-		uint32_t idxPosY = x + mapXSize * ((mapYSize - 1) + mapYSize * z);
-		uint32_t idxNegY = x + mapXSize * (0 + mapYSize * z);
-
-		if(frame->map[idxPosY] == EMPTY_BRICK)
-			bricksToVisit.push({x, mapYSize - 1, z});
-		else
-			maybe_visit_brick_edges(x, mapYSize - 1, z, Direction::POS_Y);
-
-		if(frame->map[idxNegY] == EMPTY_BRICK)
-			bricksToVisit.push({x, 0, z});
-		else
-			maybe_visit_brick_edges(x, 0, z, Direction::NEG_Y);
-	}
-
-	for(uint32_t y = 0; y < mapYSize; y++)
-	for(uint32_t x = 0; x < mapXSize; x++)
-	{
-		uint32_t idxPosZ = x + mapXSize * (y + mapYSize * (mapZSize - 1));
-		uint32_t idxNegZ = x + mapXSize * (y + mapYSize * 0);
-
-		if(frame->map[idxPosZ] == EMPTY_BRICK)
-			bricksToVisit.push({x, y, mapZSize - 1});
-		else
-			maybe_visit_brick_edges(x, y, mapZSize - 1, Direction::POS_Z);
-
-		if(frame->map[idxNegZ] == EMPTY_BRICK)
-			bricksToVisit.push({x, y, 0});
-		else
-			maybe_visit_brick_edges(x, y, 0, Direction::NEG_Z);
-	}
-
-	//flood fill:
-	//---------------
-	while(!bricksToVisit.empty() || !voxelsToVisit.empty())
-	{
-		while(!bricksToVisit.empty())
-		{
-			Coordinate curBrick = bricksToVisit.front();
-			bricksToVisit.pop();
-
-			if(curBrick.x < mapXSize - 1)
-				maybe_visit_brick(curBrick.x + 1, curBrick.y, curBrick.z, Direction::NEG_X);
-			if(curBrick.x > 0)
-				maybe_visit_brick(curBrick.x - 1, curBrick.y, curBrick.z, Direction::POS_X);
-
-			if(curBrick.y < mapYSize - 1)
-				maybe_visit_brick(curBrick.x, curBrick.y + 1, curBrick.z, Direction::NEG_Y);
-			if(curBrick.y > 0)
-				maybe_visit_brick(curBrick.x, curBrick.y - 1, curBrick.z, Direction::POS_Y);
-
-			if(curBrick.z < mapZSize - 1)
-				maybe_visit_brick(curBrick.x, curBrick.y, curBrick.z + 1, Direction::NEG_Z);
-			if(curBrick.z > 0)
-				maybe_visit_brick(curBrick.x, curBrick.y, curBrick.z - 1, Direction::POS_Z);
-		}
-
-		while(!voxelsToVisit.empty())
-		{
-			Coordinate curVoxel = voxelsToVisit.front();
-			voxelsToVisit.pop();
-
-			if(curVoxel.x < m_xSize - 1)
-				maybe_visit_voxel(curVoxel.x + 1, curVoxel.y, curVoxel.z);
-			if(curVoxel.x > 0)
-				maybe_visit_voxel(curVoxel.x - 1, curVoxel.y, curVoxel.z);
-
-			if(curVoxel.y < m_ySize - 1)
-				maybe_visit_voxel(curVoxel.x, curVoxel.y + 1, curVoxel.z);
-			if(curVoxel.y > 0)
-				maybe_visit_voxel(curVoxel.x, curVoxel.y - 1, curVoxel.z);
-
-			if(curVoxel.z < m_zSize - 1)
-				maybe_visit_voxel(curVoxel.x, curVoxel.y, curVoxel.z + 1);
-			if(curVoxel.z > 0)
-				maybe_visit_voxel(curVoxel.x, curVoxel.y, curVoxel.z - 1);
+			newFrame->map[mapIdx] = (uint32_t)newFrame->bricks.size();
+			newFrame->bricks.push_back(std::move(newBrick));
 		}
 	}
 
-	//loop over all bricks and unset nonvisible voxels:
-	//---------------
-
-	//TODO: remove bricks that end up with no set voxels
-
-	for(uint32_t i = 0; i < frame->bricks.size(); i++)
-	{
-		Brick& brick = frame->bricks[i];
-
-		for(uint32_t z = 0; z < BRICK_SIZE; z++)
-		for(uint32_t y = 0; y < BRICK_SIZE; y++)
-		for(uint32_t x = 0; x < BRICK_SIZE; x++)
-		{
-			uint32_t idx = x + BRICK_SIZE * (y + BRICK_SIZE * z);
-			if((bricksVisited[i][idx / 32] & (1 << (idx % 32))) == 0)
-				brick.unset_voxel(x, y, z);
-		}
-	}
+	return newFrame;
 }
 
 void SPLVEncoder::encode_frame(std::shared_ptr<Frame> frame)

@@ -26,8 +26,8 @@ public:
 	void unset_voxel(uint32_t x, uint32_t y, uint32_t z);
 
 	//checks whether a given voxel is set
-	bool voxel_set(uint32_t x, uint32_t y, uint32_t z) const;
-	bool voxel_set(uint32_t idx) const;
+	bool get_voxel(uint32_t x, uint32_t y, uint32_t z, Color& color) const;
+	bool get_voxel(uint32_t x, uint32_t y, uint32_t z) const;
 
 	//serializes the brick, performing any per-brick compression
 	void serialize(std::ostream& out);

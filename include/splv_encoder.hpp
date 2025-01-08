@@ -55,7 +55,7 @@ private:
 
 	std::shared_ptr<Frame> create_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox);
 	std::shared_ptr<Frame> create_vox_frame(std::ifstream& file, uint32_t sizePtr, uint32_t xyziPtr, uint32_t* palette);
-	void remove_nonvisible_voxels(std::shared_ptr<Frame> frame);
+	std::shared_ptr<Frame> remove_nonvisible_voxels(std::shared_ptr<Frame> frame);
 	void encode_frame(std::shared_ptr<Frame> frame);
 };
 
