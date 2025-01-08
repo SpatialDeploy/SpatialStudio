@@ -35,6 +35,18 @@ void PySPLVEncoder::add_nvdb_frame(std::string path, uint32_t minX, uint32_t min
 	}
 }
 
+void PySPLVEncoder::add_vox_frame(std::string path, bool removeNonvisible)
+{
+	try
+	{
+		m_encoder->add_vox_frame(path, removeNonvisible);
+	}
+	catch(std::exception e)
+	{
+		throw std::runtime_error(e.what());
+	}
+}
+
 void PySPLVEncoder::finish()
 {
 	m_encoder->finish();
@@ -70,7 +82,7 @@ PYBIND11_MODULE(py_splv_encoder, m) {
              py::arg("framerate"),
              py::arg("outputPath"),
              "Create a new SPLVEncoder instance")
-        .def("add_frame", &PySPLVEncoder::add_nvdb_frame,
+        .def("add_nvdb_frame", &PySPLVEncoder::add_nvdb_frame,
              py::arg("path"),
 			 py::arg("minX"),
 			 py::arg("minY"),
@@ -80,6 +92,10 @@ PYBIND11_MODULE(py_splv_encoder, m) {
 			 py::arg("maxZ"),
 			 py::arg("removeNonvisible") = false,
              "Add a frame from an NVDB file")
+		.def("add_vox_frame", &PySPLVEncoder::add_vox_frame,
+			py::arg("path"),
+			py::arg("removeNonvisible") = false,
+			"Add a frame from a MagicaVoxel .vox file")
         .def("finish", &PySPLVEncoder::finish,
              "Finish encoding and close the output file");
 }

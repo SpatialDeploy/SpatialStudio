@@ -26,6 +26,7 @@ public:
 	SPLVEncoder(uint32_t xSize, uint32_t ySize, uint32_t zSize, Axis lrAxis, Axis udAxis, Axis fbAxis, float framerate, std::ofstream& outFile);
 
 	void add_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox, bool removeNonvisible);
+	void add_vox_frame(const std::string& path, bool removeNonvisible);
 	void finish();
 
 private:
@@ -52,9 +53,10 @@ private:
 		std::vector<Brick> bricks;
 	};
 
-	std::unique_ptr<Frame> create_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox);
-	std::unique_ptr<Frame> remove_nonvisible_voxels(std::unique_ptr<Frame> frame);
-	void encode_frame(std::unique_ptr<Frame> frame);
+	std::shared_ptr<Frame> create_nvdb_frame(nanovdb::Vec3fGrid* grid, nanovdb::CoordBBox boundingBox);
+	std::shared_ptr<Frame> create_vox_frame(std::ifstream& file, uint32_t sizePtr, uint32_t xyziPtr, uint32_t* palette);
+	void remove_nonvisible_voxels(std::shared_ptr<Frame> frame);
+	void encode_frame(std::shared_ptr<Frame> frame);
 };
 
 #endif //#ifndef SPLV_ENCODER_H

@@ -9,6 +9,36 @@
 
 //-------------------------------------------//
 
+class QuotedWord
+{
+public:
+	operator std::string const& () const { return m_str; }
+
+private:
+	std::string m_str;
+
+	friend std::istream& operator>>(std::istream& str, QuotedWord& value)
+	{
+		char x;
+		str >> x;
+        if((str) && (x == '"'))
+        {
+            std::string extra;
+            std::getline(str, extra, '"');
+            value.m_str = extra;
+        }
+        else
+        {
+            str.putback(x);
+            str >> value.m_str;
+        }
+
+        return str;
+      }
+};
+
+//-------------------------------------------//
+
 Axis parse_axis(std::string s)
 {
 	if(s == "x")
@@ -174,7 +204,8 @@ int main(int argc, const char** argv)
 	std::cout << "===================================" << std::endl;
 	std::cout << "            SPLV Encoder           " << std::endl;
 	std::cout << "===================================" << std::endl;
-	std::cout << "- \"a [path/to/nvdb]\"" << std::endl;
+	std::cout << "- \"a_nvdb [path/to/nvdb]\"" << std::endl;
+	std::cout << "- \"a_vox [path/to/vox]\"" << std::endl;
 	std::cout << "- \"b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]\" to set the bounding box of all subsequent frames" << std::endl;
 	std::cout << "- \"r [on/off]\" to enable/disable removal of nonvisible voxels (increases encoding time)" << std::endl;
 	std::cout << "- \"f\" to finish encoding and exit program" << std::endl;
@@ -203,7 +234,7 @@ int main(int argc, const char** argv)
 		if(!(stream >> command))
 			continue;
 
-		if(command == "a")
+		if(command == "a_nvdb")
 		{
 			std::string path;
 			if(!(stream >> path))
@@ -220,6 +251,24 @@ int main(int argc, const char** argv)
 					throw std::runtime_error("NVDB file specified did not contain a Vec3f grid");
 
 				encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)), removeNonvisible);
+			}
+			catch(std::exception e)
+			{
+				std::cout << "ERROR: " << e.what() << std::endl;
+			}
+		}
+		else if(command == "a_vox")
+		{
+			QuotedWord path;
+			if(!(stream >> path))
+			{
+				std::cout << "ERROR: no VOX file specified" << std::endl;
+				continue;
+			}
+
+			try
+			{
+				encoder->add_vox_frame(path, removeNonvisible);
 			}
 			catch(std::exception e)
 			{

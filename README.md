@@ -1,15 +1,16 @@
 # SPLV Encoder
-This project is capable of encoding a stream of NanoVDB (`nvdb`) files into a voxel-based spatial (4D video, `.splv`). Currently, every frame is simply an uncompressed I-frame generated from an `nvdb`, but proper compression will be added in the future.
+This project is capable of encoding voxel-based spatials (4D video, `.splv`). It supports encoding frames from NanoVDB files (`.nvdb`), and MagicaVoxel project files (`.vox`).
 
 The project contains both a command line interface and python bindings.
 
-Note that the spatial frames are stored as brickmaps, and so the dimensions must always be a multiple of the brick size, which is 8.
+Note that the spatial frames are stored as brickmaps, and so the target dimensions must always be a multiple of the brick size, which is 8.
 
 ## Usage (Python)
 An example python usage may look like:
 ```python
 import py_splv_encoder as splv
 
+# initialize encoder
 encoder = splv.SPLVEncoder(
 	xSize=64,
 	ySize=64,
@@ -21,8 +22,9 @@ encoder = splv.SPLVEncoder(
 	outputPath="my_spatial.splv"
 )
 
+# add some frames from NanoVDBs
 for i in range(0, 60):
-	encoder.add_frame(
+	encoder.add_nvdb_frame(
 		path="my_frame_{0}.nvdb".format(i),
 		minX=0,
 		minY=0,
@@ -33,6 +35,13 @@ for i in range(0, 60):
 		removeNonvisible=True
 	)
 
+# add a frame from MagicaVoxel
+encoder.add_vox_frame(
+	path="my_frame.vox",
+	removeNonvisible=True
+)
+
+# finish encoding, flush everything to disk
 encoder.finish()
 ```
 
@@ -42,10 +51,14 @@ An encoder is first created with `splv.SPLVEncoder(xSize, ySize, zSize, lrAxis, 
 - `framerate` defines the frames per second. 
 - `outputPath` defines the path to the output spatial file.
 
-A frame is added using the `splv.Encoder.add_frame(path, minX, minY, minZ, maxX, maxY, maxZ, removeNonvisible=False)` function. 
+A frame from an `nvdb` is added using the `splv.Encoder.add_frame(path, minX, minY, minZ, maxX, maxY, maxZ, removeNonvisible=False)` function. 
 - `path` defines the path to the `nvdb` file to add. 
 - `min*` and `max*` define the bounding box of the frame within the `nvdb`
-- `removeNonvisible` controls whether the encoder automatically detects and removes non-visible voxels before encoding. This can significantly increase encoding time, so only enable it if your frames have many non-visible voxels.
+- `removeNonvisible` controls whether the encoder automatically detects and removes non-visible voxels before encoding. This can increase encoding time, so only enable it if your frames have many non-visible voxels (i.e. a solid volume).
+
+A frame from a `vox` file is added using the `splv.Encoder.add_vox_frame(path, removeNonvisible=False)` function.
+- `path` defines the path to the `vox` file to add.
+- `removeNonvisible` controls whether the encoder automatically detects and removes non-visible voxels before encoding. This can increase encoding time, so only enable it if your frames have many non-visible voxels (i.e. a solid volume).
 
 Once all frames have been added, you must call `splv.Encoder.finish()` to complete encoding. After `finish()` has been called, the encoder is invalid and no more frames can be added.
 
@@ -56,7 +69,7 @@ The CLI must be called with `./splv_encoder -d [xSize] [ySize] [zSize] -a [lrAxi
 - `framerate` defines the frames per second. 
 - `outputPath` defines the path to the output spatial file.
 
-Once in the CLI, a frame can be added be entering `a [pathToNVDB]`, where `pathToNVDB` is the path to the `nvdb` you wish to add. The bounding box within the `nvdb` to add can be set with the command `b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]`, which sets the bounding box for all subsequent frames. The default is `b 0 0 0 width-1 height-1 depth-1`. To enable/disable the automatic removal of non-visible voxels for all subsequent frames, use the command `r [on/off]`. This can increase encoding time, so only use it if your frames have many non-visible voxels.
+Once in the CLI, an nvdb frame can be added be entering `a_nvdb [pathToNVDB]`, where `pathToNVDB` is the path to the `nvdb` you wish to add. Similarly, `a_vox [pathToVox]` adds a frame from a `vox` file. The bounding box within the `nvdb` to add (this doesnt affect `vox` encoding) can be set with the command `b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]`, which sets the bounding box for all subsequent frames. The default is `b 0 0 0 width-1 height-1 depth-1`. To enable/disable the automatic removal of non-visible voxels for all subsequent frames, use the command `r [on/off]`. This can increase encoding time, so only use it if your frames have many non-visible voxels.
 
 Once all the frames have been added, you must enter `f` to finish encoding, at which point no more frames can be added. Alternatively, if you wish to exit the CLI without finishing the encoding, you can enter `q`.
 
