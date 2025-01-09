@@ -102,7 +102,7 @@ private:
             if(m_pos + n > static_cast<std::streamoff>(m_vec.size()))
 				m_vec.resize(m_pos + n);
 			
-            std::memcpy(m_vec.data() + m_pos, s, n);
+            memcpy(m_vec.data() + m_pos, s, n);
             m_pos += n;
             return n;
         }
