@@ -503,7 +503,7 @@ std::shared_ptr<SPLVEncoder::Frame> SPLVEncoder::remove_nonvisible_voxels(std::s
 	auto voxel_set = [&](int32_t x, int32_t y, int32_t z) -> bool {
 		if(x < 0 || x >= (int32_t)m_xSize ||
 		   y < 0 || y >= (int32_t)m_ySize ||
-		   x < 0 || z >= (int32_t)m_zSize)
+		   z < 0 || z >= (int32_t)m_zSize)
 		   	return false;
 		
 		uint32_t xMap = x / BRICK_SIZE;

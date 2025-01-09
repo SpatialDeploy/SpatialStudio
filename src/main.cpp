@@ -236,7 +236,7 @@ int main(int argc, const char** argv)
 
 		if(command == "a_nvdb")
 		{
-			std::string path;
+			QuotedWord path;
 			if(!(stream >> path))
 			{
 				std::cout << "ERROR: no NVDB file specified" << std::endl;
