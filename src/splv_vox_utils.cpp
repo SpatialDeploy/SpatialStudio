@@ -1,5 +1,7 @@
 #include "splv_vox_utils.h"
 
+#include <string.h>
+#include <stdio.h>
 #include "splv_log.h"
 #include "splv_global.h"
 
