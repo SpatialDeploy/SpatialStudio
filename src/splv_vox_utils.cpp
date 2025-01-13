@@ -77,8 +77,8 @@ SPLVerror splv_vox_load(const char* path, SPLVframe*** outFrames, uint32_t* numO
 
 	//open file:
 	//---------------
-	FILE* file;
-	if(fopen_s(&file, path, "rb") != 0)
+	FILE* file = fopen(path, "rb");
+	if(!file)
 	{
 		SPLV_LOG_ERROR("failed to open vox file");
 		return SPLV_ERROR_FILE_OPEN;
@@ -334,8 +334,8 @@ SPLVerror splv_vox_get_max_dimensions(const char* path, uint32_t* xSize, uint32_
 {
 	//open file:
 	//---------------
-	FILE* file;
-	if(fopen_s(&file, path, "rb") != 0)
+	FILE* file = fopen(path, "rb");
+	if(!file)
 	{
 		SPLV_LOG_ERROR("failed to open vox file");
 		return SPLV_ERROR_FILE_OPEN;
