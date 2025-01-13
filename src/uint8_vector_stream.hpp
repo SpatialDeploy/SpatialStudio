@@ -6,6 +6,7 @@
 #ifndef UINT8_VECTOR_STREAM_H
 #define UINT8_VECTOR_STREAM_H
 
+#include <memory.h>
 #include <iostream>
 #include <fstream>
 #include <streambuf>
