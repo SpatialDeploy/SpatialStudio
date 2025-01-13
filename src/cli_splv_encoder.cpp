@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include "math.h"
 #include "splv_encoder.h"
 #include "splv_vox_utils.h"
 #include "splv_nvdb_utils.h"
