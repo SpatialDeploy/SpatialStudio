@@ -416,8 +416,8 @@ SPLVerror _splv_vox_create_frame(FILE* file, SPLVframe** outFrame, uint64_t xyzi
 
 	//we swap z and y axes, .vox files are z-up
 	uint32_t width  = bbox->xMax - bbox->xMin + 1;
-	uint32_t height = bbox->yMax - bbox->yMin + 1;
-	uint32_t depth  = bbox->zMax - bbox->zMin + 1;
+	uint32_t height = bbox->zMax - bbox->zMin + 1;
+	uint32_t depth  = bbox->yMax - bbox->yMin + 1;
 
 	uint32_t widthMap  = width  / SPLV_BRICK_SIZE;
 	uint32_t heightMap = height / SPLV_BRICK_SIZE;
