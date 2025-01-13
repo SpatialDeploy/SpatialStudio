@@ -1,4 +1,5 @@
 #include "splv_brick.h"
+#include <string.h>
 
 #include "splv_morton_lut.h"
 

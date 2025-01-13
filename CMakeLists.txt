@@ -36,20 +36,20 @@ add_executable(${PROJECT_NAME}
 )
 
 # add python module
-#pybind11_add_module(py_splv_encoder
-#    "src/py_splv_encoder.cpp" 
-#    "src/splv_brick.cpp" 
-#    "src/splv_encoder.cpp" 
-#    "src/splv_frame.cpp" 
-#    "src/splv_vox_utils.cpp" 
-#    "src/splv_nvdb_utils.cpp"
-#)
+pybind11_add_module(py_splv_encoder
+    "src/py_splv_encoder.cpp" 
+    "src/splv_brick.cpp" 
+    "src/splv_encoder.cpp" 
+    "src/splv_frame.cpp" 
+    "src/splv_vox_utils.cpp" 
+    "src/splv_nvdb_utils.cpp"
+)
 
 if(WIN32)
-#    set_target_properties(py_splv_encoder PROPERTIES SUFFIX ".pyd")
+    set_target_properties(py_splv_encoder PROPERTIES SUFFIX ".pyd")
 endif()
 
 # add include directories and libraries
 include_directories("include/" ${pybind11_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE Blosc::blosc)
-#target_link_libraries(py_splv_encoder PRIVATE Blosc::blosc pybind11::lto pybind11::embed pybind11::module)
+target_link_libraries(py_splv_encoder PRIVATE Blosc::blosc pybind11::lto pybind11::embed pybind11::module)
