@@ -1,13 +1,28 @@
-#ifndef MORTON_LUT_H
-#define MORTON_LUT_H
+/**
+ * splv_morton_lut.h
+ * 
+ * contains a lookup table to go from xyz -> morton order coordinates
+ */
+
+#ifndef SPLV_MORTON_LUT_H
+#define SPLV_MORTON_LUT_H
 
 #include <stdint.h>
-#include "brick.hpp"
-#include "helper.hpp"
+#include "splv_brick.h"
 
 //-------------------------------------------//
 
-const Coordinate8 MORTON_TO_COORDINATE[BRICK_SIZE * BRICK_SIZE * BRICK_SIZE] = {
+/**
+ * an xyz coordinate
+ */
+typedef struct SPLVmortonCoordinate
+{
+	uint8_t x;
+	uint8_t y;
+	uint8_t z;
+} SPLVmortonCoordinate;
+
+const SPLVmortonCoordinate MORTON_TO_COORDINATE[SPLV_BRICK_LEN] = {
 	{ 0, 0, 0 }, { 1, 0, 0 }, { 0, 1, 0 }, { 1, 1, 0 }, { 0, 0, 1 }, { 1, 0, 1 }, { 0, 1, 1 }, { 1, 1, 1 },
 	{ 2, 0, 0 }, { 3, 0, 0 }, { 2, 1, 0 }, { 3, 1, 0 }, { 2, 0, 1 }, { 3, 0, 1 }, { 2, 1, 1 }, { 3, 1, 1 },
 	{ 0, 2, 0 }, { 1, 2, 0 }, { 0, 3, 0 }, { 1, 3, 0 }, { 0, 2, 1 }, { 1, 2, 1 }, { 0, 3, 1 }, { 1, 3, 1 },

@@ -1,26 +1,40 @@
+/* py_splv_encoder.hpp
+ *
+ * contains data/functions necessary for the sply encoder python bindings
+ */
+
 #ifndef PY_ENCODER_H
 #define PY_ENCODER_H
 
-#include "splv_encoder.hpp"
-#include <memory.h>
+#include "splv_encoder.h"
+#include <tuple>
 
 //-------------------------------------------//
 
-class PySPLVEncoder
+class PySPLVencoder
 {
 public:
-	PySPLVEncoder(uint32_t width, uint32_t height, uint32_t depth, std::string lrAxis, std::string udAxis, std::string fbAxis, float framerate, std::string outPath);
+	PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, std::string outPath);
 
-	void add_nvdb_frame(std::string path, uint32_t minX, uint32_t minY, uint32_t minZ, uint32_t maxX, uint32_t maxY, uint32_t maxZ, bool removeNonvisible = false);
-	void add_vox_frame(std::string path, bool removeNonvisible = false);
+	void encode_nvdb_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ,
+	                       int32_t maxX, int32_t maxY, int32_t maxZ, std::string lrAxis, 
+						   std::string udAxis, std::string fbAxis, bool removeNonvisible = false);
+	void encode_vox_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ, 
+	                      int32_t maxX, int32_t maxY, int32_t maxZ, bool removeNonvisible = false);
 
 	void finish();
+	void abort();
 
 private:
-	std::unique_ptr<SPLVEncoder> m_encoder;
-	std::ofstream m_outFile;
+	SPLVencoder* m_encoder;
 
-	static Axis parse_axis(std::string s);
+	void encode_frame(SPLVframe* frame, bool removeNonvisible);
+
+	static SPLVaxis parse_axis(std::string s);
 };
+
+//-------------------------------------------//
+
+std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path);
 
 #endif //#ifndef PY_ENCODER_H

@@ -1,11 +1,8 @@
 #include <iostream>
-
-#define NANOVDB_USE_BLOSC
-#include <nanovdb/util/IO.h>
-
-#include "splv_encoder.hpp"
-
-#define MAX_ARGS_LEN 256
+#include <sstream>
+#include "splv_encoder.h"
+#include "splv_vox_utils.h"
+#include "splv_nvdb_utils.h"
 
 //-------------------------------------------//
 
@@ -39,21 +36,50 @@ private:
 
 //-------------------------------------------//
 
-Axis parse_axis(std::string s)
+SPLVaxis parse_axis(std::string s)
 {
 	if(s == "x")
-		return Axis::X;
+		return SPLV_AXIS_X;
 	else if(s == "y")
-		return Axis::Y;
+		return SPLV_AXIS_Y;
 	else if(s == "z")
-		return Axis::Z;
+		return SPLV_AXIS_Z;
 	else
 		throw std::invalid_argument("");
 }
 
+void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
+{
+	SPLVframe* processedFrame;
+	if(removeNonvisible)
+	{
+		SPLVerror processingError = splv_frame_remove_nonvisible_voxels(frame, &processedFrame);
+		if(processingError != SPLV_SUCCESS)
+		{
+			std::cout << "ERROR: failed to remove nonvisible voxels with code " <<
+				processingError << " (" << splv_get_error_string(processingError) << ")\n";
+			return;
+		}
+	}
+	else
+		processedFrame = frame;
+
+	SPLVerror encodeError = splv_encoder_encode_frame(encoder, processedFrame);
+	if(encodeError != SPLV_SUCCESS)
+	{
+		std::cout << processedFrame->width << ", " << processedFrame->height << ", " << processedFrame->depth << "\n";
+
+		std::cout << "ERROR: failed to encode frame with code " 
+			<< encodeError << " (" << splv_get_error_string(encodeError) << ")\n";
+	}
+
+	if(removeNonvisible)
+		splv_frame_destroy(processedFrame);
+}
+
 //-------------------------------------------//
 
-//usage: splv_encoder -d [xSize] [ySize] [zSize] -a [left/right axis] [up/down axis] [front/back axis] -f [framerate] -o [output file]
+//usage: splv_encoder -d [xSize] [ySize] [zSize] -f [framerate] -o [output file]
 int main(int argc, const char** argv)
 {
 	//parse and validate command line args:
@@ -61,10 +87,6 @@ int main(int argc, const char** argv)
 	int32_t xSize = INT32_MAX;
 	int32_t ySize = INT32_MAX;
 	int32_t zSize = INT32_MAX;
-
-	Axis lrAxis = (Axis)UINT32_MAX;
-	Axis udAxis = (Axis)UINT32_MAX;
-	Axis fbAxis = (Axis)UINT32_MAX;
 
 	float framerate = INFINITY;
 	
@@ -94,26 +116,6 @@ int main(int argc, const char** argv)
 			catch(std::exception e)
 			{
 				std::cout << "ERROR: invalid dimensions" << std::endl;
-				return -1;
-			}
-		}
-		else if(arg == "-a")
-		{
-			if(i + 3 >= (uint32_t)argc)
-			{
-				std::cout << "ERROR: not enough arguments supplied to \"-a\" (need left/right axis, up/down axis, and front/back axis)" << std::endl;
-				return -1;
-			}
-
-			try
-			{
-				lrAxis = parse_axis(std::string(argv[++i]));
-				udAxis = parse_axis(std::string(argv[++i]));
-				fbAxis = parse_axis(std::string(argv[++i]));
-			}
-			catch(std::exception e)
-			{
-				std::cout << "ERROR: invalid axes" << std::endl;
 				return -1;
 			}
 		}
@@ -162,12 +164,6 @@ int main(int argc, const char** argv)
 		return -1;
 	}
 
-	if(lrAxis == (Axis)UINT32_MAX || udAxis == (Axis)UINT32_MAX || fbAxis == (Axis)UINT32_MAX)
-	{
-		std::cout << "ERROR: no axes specified (use \"-a [left/right axis] [up/down axis] [front/back axis]\")" << std::endl;
-		return -1;
-	}
-
 	if(framerate == INFINITY)
 	{
 		std::cout << "ERROR: no framerate specified (use \"-f [framerate]\")" << std::endl;
@@ -182,20 +178,12 @@ int main(int argc, const char** argv)
 
 	//create outfile and encoder:
 	//---------------
-	SPLVEncoder* encoder = nullptr;
-	std::ofstream* outFile;
-
-	try
+	SPLVencoder* encoder;
+	SPLVerror encoderError = splv_encoder_create(&encoder, xSize, ySize, zSize, framerate, outPath.c_str());
+	if(encoderError != 	SPLV_SUCCESS)
 	{
-		outFile = new std::ofstream(outPath, std::ofstream::binary);
-		if(!outFile->is_open())
-			throw std::runtime_error("failed to open output file for writing: " + outPath);
-
-		encoder = new SPLVEncoder((uint32_t)xSize, (uint32_t)ySize, (uint32_t)zSize, lrAxis, udAxis, fbAxis, framerate, *outFile);
-	}
-	catch(std::exception e)
-	{
-		std::cout << "ERROR: " << e.what() << std::endl;
+		std::cout << "ERROR: failed to create encoder with error code " << 
+			encoderError << "(" << splv_get_error_string(encoderError) << ")\n";
 		return -1;
 	}
 
@@ -204,22 +192,23 @@ int main(int argc, const char** argv)
 	std::cout << "===================================" << std::endl;
 	std::cout << "            SPLV Encoder           " << std::endl;
 	std::cout << "===================================" << std::endl;
-	std::cout << "- \"a_nvdb [path/to/nvdb]\"" << std::endl;
-	std::cout << "- \"a_vox [path/to/vox]\"" << std::endl;
+	std::cout << "- \"e_nvdb [path/to/nvdb]\"" << std::endl;
+	std::cout << "- \"e_vox [path/to/vox]\"" << std::endl;
 	std::cout << "- \"b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]\" to set the bounding box of all subsequent frames" << std::endl;
-	std::cout << "- \"r [on/off]\" to enable/disable removal of nonvisible voxels (increases encoding time)" << std::endl;
+	std::cout << "- \"r [on/off]\" to enable/disable removal of nonvisible voxels for all subsequent frames (increases encoding time)" << std::endl;
+	std::cout << "- \"a [lr axis] [ud axis] [fb axis]\" to set the axes corresponding to the cardinal directions for all subsequent nvdb fraes" << std::endl;
 	std::cout << "- \"f\" to finish encoding and exit program" << std::endl;
 	std::cout << "- \"q\" to exit program without finishing encoding" << std::endl;
 	std::cout << std::endl;
 
 	//check for commands in loop:
 	//---------------
-	int32_t minX = 0;
-	int32_t minY = 0; 
-	int32_t minZ = 0;
-	int32_t maxX = xSize - 1;
-	int32_t maxY = ySize - 1;
-	int32_t maxZ = zSize - 1;
+	SPLVboundingBox boundingBox = { 0, 0, 0, xSize - 1, ySize - 1, zSize - 1 };
+
+	SPLVaxis lrAxis = SPLV_AXIS_X;
+	SPLVaxis udAxis = SPLV_AXIS_Y;
+	SPLVaxis fbAxis = SPLV_AXIS_Z;
+
 	bool removeNonvisible = false;
 
 	while(true)
@@ -234,7 +223,7 @@ int main(int argc, const char** argv)
 		if(!(stream >> command))
 			continue;
 
-		if(command == "a_nvdb")
+		if(command == "e_nvdb")
 		{
 			QuotedWord path;
 			if(!(stream >> path))
@@ -243,21 +232,20 @@ int main(int argc, const char** argv)
 				continue;
 			}
 
-			try
+			SPLVframe* frame;
+			SPLVerror nvdbError = splv_nvdb_load(((std::string)path).c_str(), &frame, &boundingBox, lrAxis, udAxis, fbAxis);
+			if(nvdbError != SPLV_SUCCESS)
 			{
-				auto file = nanovdb::io::readGrid(path);
-				auto* grid = file.grid<nanovdb::Vec3f>();
-				if(!grid)
-					throw std::runtime_error("NVDB file specified did not contain a Vec3f grid");
+				std::cout << "ERROR: failed to create nvdb frame with code " <<
+					nvdbError << " (" << splv_get_error_string(nvdbError) << ")\n";
+				continue;
+			}
 
-				encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)), removeNonvisible);
-			}
-			catch(std::exception e)
-			{
-				std::cout << "ERROR: " << e.what() << std::endl;
-			}
+			encode_frame(encoder, frame, removeNonvisible);
+			
+			splv_frame_destroy(frame);
 		}
-		else if(command == "a_vox")
+		else if(command == "e_vox")
 		{
 			QuotedWord path;
 			if(!(stream >> path))
@@ -266,31 +254,58 @@ int main(int argc, const char** argv)
 				continue;
 			}
 
-			try
+			uint32_t numFrames;
+			SPLVframe** frames;
+			SPLVerror voxError = splv_vox_load(((std::string)path).c_str(), &frames, &numFrames, &boundingBox);
+			if(voxError != SPLV_SUCCESS)
 			{
-				encoder->add_vox_frame(path, removeNonvisible);
+				std::cout << "ERROR: failed to create vox frames with code " <<
+					voxError << " (" << splv_get_error_string(voxError) << ")\n";
+				continue;
 			}
-			catch(std::exception e)
-			{
-				std::cout << "ERROR: " << e.what() << std::endl;
-			}
+
+			for(uint32_t i = 0; i < numFrames; i++)
+				encode_frame(encoder, frames[i], removeNonvisible);
+
+			splv_vox_frames_destroy(frames, numFrames);
 		}
 		else if(command == "b")
 		{
-			uint32_t newMinX, newMinY, newMinZ;
-			uint32_t newMaxX, newMaxY, newMaxZ;
+			int32_t newMinX, newMinY, newMinZ;
+			int32_t newMaxX, newMaxY, newMaxZ;
 			if (!(stream >> newMinX >> newMinY >> newMinZ >> newMaxX >> newMaxY >> newMaxZ)) 
 			{
 				std::cout << "ERROR: not enough coordinates specified for bounding box" << std::endl;
 				continue;
 			}
 
-			minX = newMinX;
-			minY = newMinY;
-			minZ = newMinZ;
-			maxX = newMaxX;
-			maxY = newMaxY;
-			maxZ = newMaxZ;
+			boundingBox.xMin = newMinX;
+			boundingBox.yMin = newMinY;
+			boundingBox.zMin = newMinZ;
+			boundingBox.xMax = newMaxX;
+			boundingBox.yMax = newMaxY;
+			boundingBox.zMax = newMaxZ;
+		}
+		else if(command == "a")
+		{
+			std::string newLR, newUD, newFB;
+			if(!(stream >> newLR >> newUD >> newFB))
+			{
+				std::cout << "ERROR: not enough axes specified for \"a\"" << std::endl;
+				continue;
+			}
+
+			try
+			{
+				lrAxis = parse_axis(newLR);
+				udAxis = parse_axis(newUD);
+				fbAxis = parse_axis(newFB);
+			}
+			catch(std::exception e)
+			{
+				std::cout << "ERROR: invalid axes" << std::endl;
+				return -1;
+			}
 		}
 		else if(command == "r")
 		{
@@ -313,28 +328,25 @@ int main(int argc, const char** argv)
 		}
 		else if(command == "f")
 		{
-			try
+			SPLVerror finishError = splv_encoder_finish(encoder);
+			if(finishError != SPLV_SUCCESS)
 			{
-				encoder->finish();
-			}
-			catch(std::exception e)
-			{
-				std::cout << "ERROR: " << e.what() << std::endl;
-				continue;
+				std::cout << "ERROR: failed to finish encoding with code " << 
+					finishError << " (" << splv_get_error_string(finishError) << ")\n";
 			}
 
 			break;
 		}
 		else if(command == "q")
+		{
+			splv_encoder_abort(encoder);
 			break;
+		}
 		else
 			std::cout << "ERROR: unrecognized command \"" << input[0] << "\"" << std::endl;
 	}
 
-	//cleanup and return:
+	//return:
 	//---------------
-	delete encoder;
-	delete outFile;
-
 	return 0;
 }

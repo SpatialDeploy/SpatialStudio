@@ -1,67 +1,146 @@
 #include "py_splv_encoder.hpp"
 
-#define NANOVDB_USE_BLOSC
-#include <nanovdb/NanoVDB.h>
-#include <nanovdb/util/IO.h>
-
+#include "splv_vox_utils.h"
+#include "splv_nvdb_utils.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <iostream>
 
 //-------------------------------------------//
 
-PySPLVEncoder::PySPLVEncoder(uint32_t xSize, uint32_t ySize, uint32_t zSize, std::string lrAxis, std::string udAxis, std::string fbAxis, float framerate, std::string outPath) :
-	m_outFile(outPath, std::ofstream::binary)
+PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, std::string outPath)
 {
-	if(!m_outFile.is_open())
-		throw std::runtime_error("ERROR: failed to open output file for writing: " + outPath);
-
-	m_encoder = std::make_unique<SPLVEncoder>(xSize, ySize, zSize, parse_axis(lrAxis), parse_axis(udAxis), parse_axis(fbAxis), framerate, m_outFile);
-}
-
-void PySPLVEncoder::add_nvdb_frame(std::string path, uint32_t minX, uint32_t minY, uint32_t minZ, uint32_t maxX, uint32_t maxY, uint32_t maxZ, bool removeNonvisible)
-{
-	try
+	SPLVerror encoderError = splv_encoder_create(&m_encoder, width, height, depth, framerate, outPath.c_str());
+	if(encoderError != SPLV_SUCCESS)
 	{
-		auto file = nanovdb::io::readGrid(path);
-		auto* grid = file.grid<nanovdb::Vec3f>();
-		if(!grid)
-			throw std::runtime_error("NVDB file specified did not contain a Vec3f grid");
-
-		m_encoder->add_nvdb_frame(grid, nanovdb::CoordBBox(nanovdb::Coord(minX, minY, minZ), nanovdb::Coord(maxX, maxY, maxZ)), removeNonvisible);
-	}
-	catch(std::exception e)
-	{
-		throw std::runtime_error(e.what());
+		std::cout << "ERROR: failed to create SPLVencoder with code " <<
+			encoderError << "(" << splv_get_error_string << ")\n";
+		throw std::runtime_error("");
 	}
 }
 
-void PySPLVEncoder::add_vox_frame(std::string path, bool removeNonvisible)
+void PySPLVencoder::encode_nvdb_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ, 
+                                   int32_t maxX, int32_t maxY, int32_t maxZ, std::string lrAxisStr, 
+                                   std::string udAxisStr, std::string fbAxisStr, bool removeNonvisible)
 {
-	try
+	SPLVaxis lrAxis = parse_axis(lrAxisStr);
+	SPLVaxis udAxis = parse_axis(udAxisStr);
+	SPLVaxis fbAxis = parse_axis(fbAxisStr);
+
+	SPLVboundingBox boundingBox = { minX, minY, minZ, maxX, maxY, maxZ };
+
+	SPLVframe* frame;
+	SPLVerror nvdbError = splv_nvdb_load(((std::string)path).c_str(), &frame, &boundingBox, lrAxis, udAxis, fbAxis);
+	if(nvdbError != SPLV_SUCCESS)
 	{
-		m_encoder->add_vox_frame(path, removeNonvisible);
+		std::cout << "ERROR: failed to create nvdb frame with code " <<
+			nvdbError << "(" << splv_get_error_string(nvdbError) << ")\n";
+		throw std::runtime_error("");
 	}
-	catch(std::exception e)
+
+	encode_frame(frame, removeNonvisible);
+	
+	splv_frame_destroy(frame);
+}
+
+void PySPLVencoder::encode_vox_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ, 
+                                  int32_t maxX, int32_t maxY, int32_t maxZ, bool removeNonvisible)
+{
+	SPLVboundingBox boundingBox = { minX, minY, minZ, maxX, maxY, maxZ };
+
+	uint32_t numFrames;
+	SPLVframe** frames;
+	SPLVerror voxError = splv_vox_load(((std::string)path).c_str(), &frames, &numFrames, &boundingBox);
+	if(voxError != SPLV_SUCCESS)
 	{
-		throw std::runtime_error(e.what());
+		std::cout << "ERROR: failed to create vox frames with code " <<
+			voxError << "(" << splv_get_error_string(voxError) << ")\n";
+		throw std::runtime_error("");
+	}
+
+	for(uint32_t i = 0; i < numFrames; i++)
+		encode_frame(frames[i], removeNonvisible);
+
+	splv_vox_frames_destroy(frames, numFrames);
+}
+
+void PySPLVencoder::finish()
+{
+	SPLVerror finishError = splv_encoder_finish(m_encoder);
+	if(finishError != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to finish encoding with code " << 
+			finishError << "(" << splv_get_error_string(finishError) << ")\n";
+		throw std::runtime_error("");
 	}
 }
 
-void PySPLVEncoder::finish()
+void PySPLVencoder::abort()
 {
-	m_encoder->finish();
+	splv_encoder_abort(m_encoder);
 }
 
-Axis PySPLVEncoder::parse_axis(std::string s)
+//-------------------------------------------//
+
+void PySPLVencoder::encode_frame(SPLVframe* frame, bool removeNonvisible)
+{
+	SPLVframe* processedFrame;
+	if(removeNonvisible)
+	{
+		SPLVerror processingError = splv_frame_remove_nonvisible_voxels(frame, &processedFrame);
+		if(processingError != SPLV_SUCCESS)
+		{
+			std::cout << "ERROR: failed to remove nonvisible voxels with code " <<
+				processingError << "(" << splv_get_error_string(processingError) << ")\n";
+			return;
+		}
+	}
+	else
+		processedFrame = frame;
+
+	SPLVerror encodeError = splv_encoder_encode_frame(m_encoder, processedFrame);
+	if(encodeError != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to encoder frame with code " 
+			<< encodeError << "(" << splv_get_error_string(encodeError) << ")\n";
+	}
+
+	if(removeNonvisible)
+		splv_frame_destroy(processedFrame);
+}
+
+SPLVaxis PySPLVencoder::parse_axis(std::string s)
 {
 	if(s == "x")
-		return Axis::X;
+		return SPLV_AXIS_X;
 	else if(s == "y")
-		return Axis::Y;
+		return SPLV_AXIS_Y;
 	else if(s == "z")
-		return Axis::Z;
+		return SPLV_AXIS_Z;
 	else
-		throw std::invalid_argument("invalid axis, must be one of \"x\", \"y\", or \"z\"");
+	{
+		std::cout << "ERROR: invalid axis, must be one of \"x\", \"y\", or \"z\"\n";
+		throw std::invalid_argument("");
+	}
+}
+
+//-------------------------------------------//
+
+std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path)
+{
+	uint32_t xSize;
+	uint32_t ySize;
+	uint32_t zSize;
+
+	SPLVerror error = splv_vox_get_max_dimensions(path.c_str(), &xSize, &ySize, &zSize);
+	if(error != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to get max .vox file dimensions with code " <<
+			error << "(" << splv_get_error_string(error) << ")\n";
+		throw std::runtime_error("");
+	}
+
+	return std::make_tuple(xSize, ySize, zSize);
 }
 
 //-------------------------------------------//
@@ -71,31 +150,42 @@ namespace py = pybind11;
 PYBIND11_MODULE(py_splv_encoder, m) {
 	m.doc() = "SPLV Encoder";
 
-    py::class_<PySPLVEncoder>(m, "SPLVEncoder")
-        .def(py::init<uint32_t, uint32_t, uint32_t, const std::string&, const std::string&, const std::string&, float, const std::string&>(),
-             py::arg("xSize"),
-             py::arg("ySize"),
-             py::arg("zSize"),
-			 py::arg("lrAxis"),
-			 py::arg("udAxis"),
-			 py::arg("fbAxis"),
-             py::arg("framerate"),
-             py::arg("outputPath"),
-             "Create a new SPLVEncoder instance")
-        .def("add_nvdb_frame", &PySPLVEncoder::add_nvdb_frame,
-             py::arg("path"),
-			 py::arg("minX"),
-			 py::arg("minY"),
-			 py::arg("minZ"),
-			 py::arg("maxX"),
-			 py::arg("maxY"),
-			 py::arg("maxZ"),
-			 py::arg("removeNonvisible") = false,
-             "Add a frame from an NVDB file")
-		.def("add_vox_frame", &PySPLVEncoder::add_vox_frame,
+    py::class_<PySPLVencoder>(m, "SPLVencoder")
+        .def(py::init<uint32_t, uint32_t, uint32_t, float, const std::string&>(),
+            py::arg("width"),
+            py::arg("height"),
+            py::arg("depth"),
+            py::arg("framerate"),
+            py::arg("outputPath"),
+            "Create a new SPLVencoder instance")
+        .def("encode_nvdb_frame", &PySPLVencoder::encode_nvdb_frame,
+            py::arg("path"),
+			py::arg("minX"),
+			py::arg("minY"),
+			py::arg("minZ"),
+			py::arg("maxX"),
+			py::arg("maxY"),
+			py::arg("maxZ"),
+			py::arg("lrAxis") = "x",
+			py::arg("udAxis") = "y",
+			py::arg("fbAxis") = "z",
+			py::arg("removeNonvisible") = false,
+            "Add a frame from an NVDB file")
+		.def("encode_vox_frame", &PySPLVencoder::encode_vox_frame,
 			py::arg("path"),
+			py::arg("minX"),
+			py::arg("minY"),
+			py::arg("minZ"),
+			py::arg("maxX"),
+			py::arg("maxY"),
+			py::arg("maxZ"),
 			py::arg("removeNonvisible") = false,
 			"Add a frame from a MagicaVoxel .vox file")
-        .def("finish", &PySPLVEncoder::finish,
-             "Finish encoding and close the output file");
+        .def("finish", &PySPLVencoder::finish,
+            "Finish encoding and close the output file")
+        .def("abort", &PySPLVencoder::abort,
+            "Abort encoding in error and close the output file");
+
+	m.def("get_vox_max_dimensions", &get_vox_max_dimensions,
+		"Returns the maximum dimensions of frames in a MagicaVoxel .vox file");
 }
