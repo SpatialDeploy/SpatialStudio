@@ -48,7 +48,7 @@ SPLVerror splv_nvdb_load(const char* path, SPLVframe** outFrame, SPLVboundingBox
 	}
 	catch(std::exception e)
 	{
-		SPLV_LOG_ERROR("failed to oppen nvdb file");
+		SPLV_LOG_ERROR("failed to open nvdb file");
 		return SPLV_ERROR_FILE_OPEN;
 	}
 

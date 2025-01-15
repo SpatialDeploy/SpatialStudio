@@ -147,7 +147,7 @@ std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(py_splv_encoder, m) {
+PYBIND11_MODULE(splv_encoder_py, m) {
 	m.doc() = "SPLV Encoder";
 
     py::class_<PySPLVencoder>(m, "SPLVencoder")
