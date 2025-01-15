@@ -30,18 +30,6 @@ class CMakeBuild(build_ext):
 		for ext in self.extensions:
 			self.build_extension(ext)
 			
-		# copy build binaries into package dir:
-		src_bin_dir = os.path.join(os.getcwd(), 'build', 'bin')
-		package_bin_dir = os.path.join(os.getcwd(), 'spatialstudio', 'bin')
-
-		if not os.path.exists(package_bin_dir):
-			os.mkdir(package_bin_dir)
-
-		for filename in os.listdir(src_bin_dir):
-			src_file = os.path.join(src_bin_dir, filename)
-			if os.path.isfile(src_file):
-				shutil.copy(src_file, package_bin_dir)
-
 	def build_extension(self, ext):
 		extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
 		
@@ -84,6 +72,17 @@ class CMakeBuild(build_ext):
 			["cmake", "--build", ".", "--config", "Release"],
 			cwd=cmake_build_dir
 		)
+
+		# copy build binaries into package dir:
+		src_bin_dir = os.path.join(cmake_build_dir, 'bin')
+		package_bin_dir = os.path.join(os.getcwd(), 'spatialstudio', 'bin')
+		os.makedirs(package_bin_dir, exist_ok=True)	
+
+		if os.path.exists(src_bin_dir):
+			for filename in os.listdir(src_bin_dir):
+				src_file = os.path.join(src_bin_dir, filename)
+				if os.path.isfile(src_file):
+					shutil.copy2(src_file, package_bin_dir)
 
 # ------------------------------------------ #
 
