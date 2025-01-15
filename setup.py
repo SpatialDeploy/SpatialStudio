@@ -5,6 +5,7 @@ import subprocess
 import sys
 import platform
 import shutil
+from pathlib import Path
 
 # ------------------------------------------ #
 
@@ -73,15 +74,16 @@ class CMakeBuild(build_ext):
 			cwd=cmake_build_dir
 		)
 
-		# copy build binaries into package dir:
-		package_bin_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'spatialstudio', 'bin')
-		os.makedirs(package_bin_dir, exist_ok=True)	
+		# copy build binary into package dir:
+		self.move_output(ext)
 
-		if os.path.exists(cmake_build_dir):
-			for filename in os.listdir(cmake_build_dir):
-				src_file = os.path.join(cmake_build_dir, filename)
-				if os.path.isfile(src_file):
-					shutil.copy2(src_file, package_bin_dir)
+	def move_output(self, ext):
+		build_temp = Path(self.build_temp).resolve()
+		dest_path = Path(self.get_ext_fullpath(ext.name)).resolve()
+		source_path = build_temp / self.get_ext_filename(ext.name)
+		dest_directory = dest_path.parents[0]
+		dest_directory.mkdir(parents=True, exist_ok=True)
+		self.copy_file(source_path, dest_path)
 
 # ------------------------------------------ #
 
