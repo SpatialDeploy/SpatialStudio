@@ -11,18 +11,17 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 # fetch packages
 include(FetchContent)
 
-FetchContent_Declare(
-    c-blosc
-    GIT_REPOSITORY https://github.com/Blosc/c-blosc.git
-    GIT_TAG        v1.21.6
-)
-
 set(BLOSC_IS_SUBPROJECT ON)
 set(BUILD_STATIC ON)
 set(BUILD_SHARED OFF)
 set(BUILD_TESTS OFF)
 set(BUILD_BENCHMARKS OFF)
 set(BUILD_FUZZERS OFF)
+FetchContent_Declare(
+    c-blosc
+    GIT_REPOSITORY https://github.com/Blosc/c-blosc.git
+    GIT_TAG        v1.21.6
+)
 FetchContent_MakeAvailable(c-blosc)
 
 if(SPLV_BUILD_PYTHON_BINDINGS)
@@ -33,19 +32,6 @@ if(SPLV_BUILD_PYTHON_BINDINGS)
     )
     FetchContent_MakeAvailable(pybind11)
 endif()
-
-# set output dir
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
-# make sure that all configurations use the same output directory
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG   ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG   ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG   ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
 
 # create shared library with common code
 add_library(splv_encoder_lib STATIC

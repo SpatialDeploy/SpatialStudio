@@ -31,15 +31,15 @@ class CMakeBuild(build_ext):
 			self.build_extension(ext)
 			
 	def build_extension(self, ext):
-		extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-		
-		# create build dir
-		cmake_build_dir = os.path.join(ext.sourcedir, "build")
-		os.makedirs(cmake_build_dir, exist_ok=True)
+		# get build dir
+		cmake_build_dir = os.path.abspath(self.build_temp)
+		if not os.path.exists(cmake_build_dir):
+			os.makedirs(cmake_build_dir)
 
 		# get cmake args
 		cmake_args = [
-			f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
+			f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={cmake_build_dir}",
+			f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY={cmake_build_dir}",
 			"-DCMAKE_BUILD_TYPE=Release",
 			"-DSPLV_BUILD_PYTHON_BINDINGS=ON"
 		]
@@ -74,13 +74,12 @@ class CMakeBuild(build_ext):
 		)
 
 		# copy build binaries into package dir:
-		src_bin_dir = os.path.join(cmake_build_dir, 'bin')
-		package_bin_dir = os.path.join(os.getcwd(), 'spatialstudio', 'bin')
+		package_bin_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'spatialstudio', 'bin')
 		os.makedirs(package_bin_dir, exist_ok=True)	
 
-		if os.path.exists(src_bin_dir):
-			for filename in os.listdir(src_bin_dir):
-				src_file = os.path.join(src_bin_dir, filename)
+		if os.path.exists(cmake_build_dir):
+			for filename in os.listdir(cmake_build_dir):
+				src_file = os.path.join(cmake_build_dir, filename)
 				if os.path.isfile(src_file):
 					shutil.copy2(src_file, package_bin_dir)
 
@@ -100,7 +99,7 @@ setup(
 	long_description_content_type="text/markdown",
 	url="https://github.com/SpatialDeploy/SpatialStudio",
 	packages=find_packages(),
-	ext_modules=[CMakeExtension("splv_encoder")],
+	ext_modules=[CMakeExtension("splv_encoder_py")],
 	cmdclass={"build_ext": CMakeBuild},
 	install_requires=[],
 	package_data={
