@@ -32,7 +32,7 @@ class CMakeBuild(build_ext):
 			
 		# copy build binaries into package dir:
 		src_bin_dir = os.path.join(os.getcwd(), 'build', 'bin')
-		package_bin_dir = os.path.join(os.getcwd(), 'spatialstudio', 'bin')
+		package_bin_dir = os.path.join(os.getcwd(), 'spatialstudio')
 
 		if not os.path.exists(package_bin_dir):
 			os.mkdir(package_bin_dir)
