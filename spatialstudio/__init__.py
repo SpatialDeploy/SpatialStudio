@@ -1,1 +1,1 @@
-from .splv_encoder_py import *
+from .bin.splv_encoder_py import *

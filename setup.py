@@ -32,7 +32,7 @@ class CMakeBuild(build_ext):
 			
 		# copy build binaries into package dir:
 		src_bin_dir = os.path.join(os.getcwd(), 'build', 'bin')
-		package_bin_dir = os.path.join(os.getcwd(), 'spatialstudio')
+		package_bin_dir = os.path.join(os.getcwd(), 'spatialstudio', 'bin')
 
 		if not os.path.exists(package_bin_dir):
 			os.mkdir(package_bin_dir)
@@ -104,6 +104,9 @@ setup(
 	ext_modules=[CMakeExtension("splv_encoder")],
 	cmdclass={"build_ext": CMakeBuild},
 	install_requires=[],
+	package_data={
+		"spatialstudio": ["bin/*"],
+	},
 	classifiers=[
 		"Programming Language :: Python :: 3",
 		"License :: OSI Approved :: MIT License",
