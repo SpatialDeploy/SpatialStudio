@@ -3,11 +3,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 cmake_policy(SET CMP0091 NEW)
+cmake_policy(SET CMP0083 NEW)
 project(splv_encoder VERSION 1.0)
 
-include(FetchContent)
+set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
 # fetch packages
+include(FetchContent)
+
 FetchContent_Declare(
     c-blosc
     GIT_REPOSITORY https://github.com/Blosc/c-blosc.git
@@ -67,7 +70,9 @@ endif()
 if(SPLV_BUILD_PYTHON_BINDINGS)
     pybind11_add_module(splv_encoder_py "src/py_splv_encoder.cpp")
 
-    set_target_properties(splv_encoder_py PROPERTIES SUFFIX ".pyd")
+    if(WIN32)
+        set_target_properties(py_splv_encoder PROPERTIES SUFFIX ".pyd")
+    endif()
 
     target_include_directories(splv_encoder_py PUBLIC "include/" PRIVATE ${pybind11_INCLUDE_DIRS})
     target_link_libraries(splv_encoder_py PRIVATE 
