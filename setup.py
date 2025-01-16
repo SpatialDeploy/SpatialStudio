@@ -104,9 +104,6 @@ setup(
 	ext_modules=[CMakeExtension("splv_encoder_py")],
 	cmdclass={"build_ext": CMakeBuild},
 	install_requires=[],
-	package_data={
-		"spatialstudio": ["bin/*"],
-	},
 	classifiers=[
 		"Programming Language :: Python :: 3",
 		"License :: OSI Approved :: MIT License",

@@ -57,7 +57,7 @@ if(SPLV_BUILD_PYTHON_BINDINGS)
     pybind11_add_module(splv_encoder_py "src/py_splv_encoder.cpp")
 
     if(WIN32)
-        set_target_properties(py_splv_encoder PROPERTIES SUFFIX ".pyd")
+        set_target_properties(splv_encoder_py PROPERTIES SUFFIX ".pyd")
     endif()
 
     target_include_directories(splv_encoder_py PUBLIC "include/" PRIVATE ${pybind11_INCLUDE_DIRS})

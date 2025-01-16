@@ -8,7 +8,7 @@ Note that the spatial frames are stored as brickmaps, and so the target dimensio
 ## Usage (Python)
 An example python usage may look like:
 ```python
-import py_splv_encoder as splv
+import spatialstudio as splv
 
 # initialize encoder
 encoder = splv.SPLVencoder(
@@ -79,13 +79,15 @@ Once in the CLI, an nvdb frame can be encoded be entering `e_nvdb [pathToNVDB]`,
 
 Once all the frames have been added, you must enter `f` to finish encoding, at which point no more frames can be added. Alternatively, if you wish to exit the CLI without finishing the encoding, you can enter `q`.
 
-## Building
-This project has the following dependencies which must be installed before building:
-- `cmake`
-- `pybind11`
-- `blosc`
+## Installing
+To install the python bindings, simply run
+```bash
+pip install git+https://github.com/SpatialDeploy/SpatialStudio
+```
+This will install the `spatialstudio` package globally.
 
-Once the dependencies have been installed, you can first generate build files from by calling
+## Building
+You may wish to build the project from source, either to run the CLI executable or to build the python library manually. This project uses `cmake` as its build system. Dependencies are installed automatically. You first generate platform-specific build files from by calling
 ```bash
 mkdir build
 cd build
@@ -93,8 +95,6 @@ cmake ..
 ```
 This will generate a `Makefile` on Unix systems, or a Visual Studio solution on Windows systems. On Unix, you can simply call `make` to build the project. On Windows you must open the VS solution and build from there.
 
-Once the project has build successfully, the CLI executable as well as the python library (`.pyd` file) can be found under the `bin` directory. To install the python library globally, you can call:
-```bash
-pip install -e .
-```
-From the root directory.
+Simply running `cmake ..` will only build the `splv_encoder` static library. In order to additionally build the CLI tool, add the flag `	-DSPLV_BUILD_CLI=ON` when configuring cmake. Similarly add the flag `-DSPLV_BUILD_PYTHON_BINDINGS` to build the python bindings.
+
+Once the project has built successfully, the `splv_encoder` library, as well as (optionally) the CLI executable and python library, will be nested somewhere in the `build` directory (depending on yuor platform).
