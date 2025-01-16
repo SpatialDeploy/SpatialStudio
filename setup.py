@@ -37,30 +37,20 @@ class CMakeBuild(build_ext):
 		if not os.path.exists(cmake_build_dir):
 			os.makedirs(cmake_build_dir)
 
-		# get cmake args
+		# get cmake args (force all output files to be in root build directory)
 		cmake_args = [
 			f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={cmake_build_dir}",
 			f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY={cmake_build_dir}",
+			f"-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY={cmake_build_dir}",
+			f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE={cmake_build_dir}",
+			f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE={cmake_build_dir}",
+			f"-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE={cmake_build_dir}",
+			f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG={cmake_build_dir}",
+			f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG={cmake_build_dir}",
+			f"-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG={cmake_build_dir}",
 			"-DCMAKE_BUILD_TYPE=Release",
 			"-DSPLV_BUILD_PYTHON_BINDINGS=ON"
 		]
-
-		if platform.system() == "Windows":
-			python_version = f"{sys.version_info.major}{sys.version_info.minor}"
-			python_lib_path = os.path.join(sys.prefix, "libs", f"python{python_version}.lib")
-			python_include = os.path.join(sys.prefix, "include")
-			
-			if os.path.exists(python_lib_path):
-				cmake_args += [
-					f"-DPYTHON_LIBRARY={python_lib_path}",
-					f"-DPYTHON_INCLUDE_DIR={python_include}",
-				]
-			
-			cmake_args += ["-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=TRUE"]
-			if sys.maxsize > 2**32:
-				cmake_args += ["-A", "x64"]
-		else:
-			cmake_args += ["-DCMAKE_BUILD_TYPE=Release"]
 
 		# configure CMake
 		subprocess.check_call(
@@ -78,12 +68,26 @@ class CMakeBuild(build_ext):
 		self.move_output(ext)
 
 	def move_output(self, ext):
-		build_temp = Path(self.build_temp).resolve()
-		dest_path = Path(self.get_ext_fullpath(ext.name)).resolve()
-		source_path = build_temp / self.get_ext_filename(ext.name)
-		dest_directory = dest_path.parents[0]
-		dest_directory.mkdir(parents=True, exist_ok=True)
-		self.copy_file(source_path, dest_path)
+		build_temp = os.path.abspath(self.build_temp)
+		dest_path = os.path.abspath(self.get_ext_fullpath(ext.name))
+		
+		standard_filename = self.get_ext_filename(ext.name)
+		alt_filename = "splv_encoder_py.pyd" # alternate name from MSVC
+		
+		source_path = os.path.join(build_temp, standard_filename)
+		alt_source_path = os.path.join(build_temp, alt_filename)
+		
+		if os.path.exists(source_path):
+			actual_source = source_path
+		elif os.path.exists(alt_source_path):
+			actual_source = alt_source_path
+		else:
+			raise FileNotFoundError(f"neither {source_path} nor {alt_source_path} exists")
+
+		dest_directory = os.path.dirname(dest_path)
+		os.makedirs(dest_directory, exist_ok=True)
+
+		self.copy_file(actual_source, dest_path)
 
 # ------------------------------------------ #
 
