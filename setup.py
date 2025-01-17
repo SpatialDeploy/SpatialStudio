@@ -2,9 +2,7 @@ from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
 import os
 import subprocess
-import sys
-import platform
-import shutil
+import glob
 from pathlib import Path
 
 # ------------------------------------------ #
@@ -70,24 +68,23 @@ class CMakeBuild(build_ext):
 	def move_output(self, ext):
 		build_temp = os.path.abspath(self.build_temp)
 		dest_path = os.path.abspath(self.get_ext_fullpath(ext.name))
-		
-		standard_filename = self.get_ext_filename(ext.name)
-		alt_filename = "splv_encoder_py.pyd" # alternate name from MSVC
-		
-		source_path = os.path.join(build_temp, standard_filename)
-		alt_source_path = os.path.join(build_temp, alt_filename)
-		
-		if os.path.exists(source_path):
-			actual_source = source_path
-		elif os.path.exists(alt_source_path):
-			actual_source = alt_source_path
-		else:
-			raise FileNotFoundError(f"neither {source_path} nor {alt_source_path} exists")
-
 		dest_directory = os.path.dirname(dest_path)
+		
+		if os.name == 'nt':  # windows
+			pattern = "splv_encoder_py*.pyd"
+		else: # unix
+			pattern = "splv_encoder_py*.so"
+		
+		matching_files = glob.glob(os.path.join(build_temp, pattern))
+		
+		if not matching_files:
+			raise FileNotFoundError(f"no files matching {pattern} found in {build_temp}")
+		
 		os.makedirs(dest_directory, exist_ok=True)
-
-		self.copy_file(actual_source, dest_path)
+		
+		for source_path in matching_files:
+			dest_file = os.path.join(dest_directory, os.path.basename(source_path))
+			self.copy_file(source_path, dest_file)
 
 # ------------------------------------------ #
 
