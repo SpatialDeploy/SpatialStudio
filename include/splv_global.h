@@ -13,7 +13,7 @@
 //-------------------------------------------//
 
 #if !defined(SPLV) || !defined(SPLV_FREE) || !defined(QOBJ_FREE)
-	#include <malloc.h>
+	#include <stdlib.h>
 
 	#define SPLV_MALLOC(s) malloc(s)
 	#define SPLV_FREE(p) free(p)
