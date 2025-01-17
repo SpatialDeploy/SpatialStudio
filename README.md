@@ -1,5 +1,5 @@
 # SPLV Encoder
-This project is capable of encoding voxel-based spatials (4D video, `.splv`). It supports encoding frames from NanoVDB files (`.nvdb`), and MagicaVoxel project files (`.vox`).
+This project is capable of encoding voxel-based spatials (4D video, `.splv`). It supports encoding frames from NanoVDB files (`.nvdb`), MagicaVoxel project files (`.vox`), and `numpy` arrays.
 
 The project contains both a command line interface and python bindings.
 
@@ -35,18 +35,6 @@ for i in range(0, 60):
 		removeNonvisible=False
 	)
 
-# add frames from a MagicaVoxel animation
-encoder.encode_vox_frame(
-	path="my_frame.vox",
-	minX=-32,
-	minY=-32,
-	minZ=-32,
-	maxX=31,
-	maxY=31,
-	maxZ=31,
-	removeNonvisible=True
-)
-
 # finish encoding, flush everything to disk
 encoder.finish()
 ```
@@ -56,15 +44,20 @@ An encoder is first created with `splv.SPLVencoder(width, height, depth, framera
 - `framerate` defines the frames per second. 
 - `outputPath` defines the path to the output spatial file.
 
-A frame from an `nvdb` is encoded using the `splv.SPLVencoder.encode_nvdb_frame(path, minX, minY, minZ, maxX, maxY, maxZ, removeNonvisible=False)` function. 
+A frame from an `nvdb` is encoded using the `splv.SPLVencoder.encode_nvdb_frame(path, minX, minY, minZ, maxX, maxY, maxZ, lrAxis, udAxis, fbAxis removeNonvisible=False)` function. 
 - `path` defines the path to the `nvdb` file to add. 
-- `min*` and `max*` define the bounding box of the frame within the `nvdb`
+- `min*` and `max*` define the bounding box of the frame within the `nvdb`. Note that these must correspond to a box with dimensions that are multiples of the brick size (8).
 - `lrAxis`, `udAxis`, and `fbAxis` define which axes correspond to the left/right, up/down, and front/back directions respectively. They must be distinct and one of `"x"`, `"y"`, or `"z"`.
 - `removeNonvisible` controls whether the encoder automatically detects and removes non-visible voxels before encoding. This can increase encoding time, so only enable it if your frames have many non-visible voxels (i.e. a solid volume).
 
-A set frames from a `vox` file animation are encoded using the `splv.SPLVencoder.encode_vox_frame(path, removeNonvisible=False)` function.
+A set of frames from a `vox` file animation are encoded using the `splv.SPLVencoder.encode_vox_frame(path, removeNonvisible=False)` function.
 - `path` defines the path to the `vox` file to add.
 - `min*` and `max*` define the bounding box of the frame within the `vox`. Note that `vox` files are z-up.
+- `removeNonvisible` controls whether the encoder automatically detects and removes non-visible voxels before encoding. This can increase encoding time, so only enable it if your frames have many non-visible voxels (i.e. a solid volume).
+
+A frame from a `numpy` array is encoded using the `splv.SPLVencoder.encode_numpy_array_float(arr, lrAxis, udAxis, fbAxis, removeNonvisible=False)`, or the analogous `encode_numpy_array_byte()`.
+- `arr` is the numpy array to encode. It must be a 4-dimensional array, with the last dimension having size 4. It represents an 3D array of RGBA colors, where an alpha of `0` represents an empty voxel (the voxel is fully opaque otherwise). For `encode_numpy_array_float`, these are floating point values in the range `[0.0, 1.0]`. For `encode_numpy_array_byte`, these are `uint8`s in the range `[0, 255]`.
+- `lrAxis`, `udAxis`, and `fbAxis` define which axes correspond to the left/right, up/down, and front/back directions respectively. They must be distinct and one of `"x"`, `"y"`, or `"z"`.
 - `removeNonvisible` controls whether the encoder automatically detects and removes non-visible voxels before encoding. This can increase encoding time, so only enable it if your frames have many non-visible voxels (i.e. a solid volume).
 
 Once all frames have been added, you must call `splv.SPLVencoder.finish()` to complete encoding. After `finish()` has been called, the encoder is invalid and no more frames can be added.
