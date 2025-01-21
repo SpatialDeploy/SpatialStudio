@@ -312,9 +312,16 @@ std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path
 
 void concat(const py::list& paths, const std::string& outPath)
 {
+    std::vector<std::string> stdPaths;
     std::vector<const char*> cPaths;
-    for (const auto& path : paths)
-        cPaths.push_back(py::cast<std::string>(path).c_str());
+
+	stdPaths.reserve(paths.size());
+    cPaths.reserve(paths.size());
+    for(const auto& path : paths)
+	{
+        stdPaths.push_back(py::cast<std::string>(path));
+        cPaths.push_back(stdPaths.back().c_str());
+	}
 
 	SPLVerror error = splv_file_concat((uint32_t)cPaths.size(), cPaths.data(), outPath.c_str());
 	if(error != SPLV_SUCCESS)
