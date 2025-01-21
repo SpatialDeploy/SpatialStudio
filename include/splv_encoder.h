@@ -28,6 +28,20 @@ typedef struct SPLVencoder
 	std::ofstream* outFile; //TODO: c-style file
 } SPLVencoder;
 
+/**
+ * header containing all metadata in an splv file
+ */
+typedef struct SPLVfileHeader
+{
+	uint32_t width;
+	uint32_t height;
+	uint32_t depth;
+	float framerate;
+	uint32_t frameCount;
+	float duration;
+	uint64_t frameTablePtr;
+} SPLVfileHeader;
+
 //-------------------------------------------//
 
 /**

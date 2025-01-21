@@ -9,19 +9,6 @@
 
 //-------------------------------------------//
 
-typedef struct SPLVfileHeader
-{
-	uint32_t width;
-	uint32_t height;
-	uint32_t depth;
-	float framerate;
-	uint32_t frameCount;
-	float duration;
-	uint64_t frameTablePtr;
-} SPLVfileHeader;
-
-//-------------------------------------------//
-
 SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, uint32_t depth, float framerate, const char* outPath)
 {
 	//validate params:

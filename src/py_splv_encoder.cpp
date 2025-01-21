@@ -2,9 +2,11 @@
 
 #include "splv_vox_utils.h"
 #include "splv_nvdb_utils.h"
+#include "splv_utils.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <iostream>
+#include <vector>
 
 //-------------------------------------------//
 
@@ -14,7 +16,7 @@ PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, fl
 	if(encoderError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create SPLVencoder with code " <<
-			encoderError << "(" << splv_get_error_string << ")\n";
+			encoderError << " (" << splv_get_error_string(encoderError) << ")\n";
 		throw std::runtime_error("");
 	}
 }
@@ -34,7 +36,7 @@ void PySPLVencoder::encode_nvdb_frame(std::string path, int32_t minX, int32_t mi
 	if(nvdbError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create nvdb frame with code " <<
-			nvdbError << "(" << splv_get_error_string(nvdbError) << ")\n";
+			nvdbError << " (" << splv_get_error_string(nvdbError) << ")\n";
 		throw std::runtime_error("");
 	}
 
@@ -54,7 +56,7 @@ void PySPLVencoder::encode_vox_frame(std::string path, int32_t minX, int32_t min
 	if(voxError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create vox frames with code " <<
-			voxError << "(" << splv_get_error_string(voxError) << ")\n";
+			voxError << " (" << splv_get_error_string(voxError) << ")\n";
 		throw std::runtime_error("");
 	}
 
@@ -82,7 +84,7 @@ void PySPLVencoder::finish()
 	if(finishError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to finish encoding with code " << 
-			finishError << "(" << splv_get_error_string(finishError) << ")\n";
+			finishError << " (" << splv_get_error_string(finishError) << ")\n";
 		throw std::runtime_error("");
 	}
 }
@@ -301,11 +303,40 @@ std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to get max .vox file dimensions with code " <<
-			error << "(" << splv_get_error_string(error) << ")\n";
+			error << " (" << splv_get_error_string(error) << ")\n";
 		throw std::runtime_error("");
 	}
 
 	return std::make_tuple(xSize, ySize, zSize);
+}
+
+void concat(const py::list& paths, const std::string& outPath)
+{
+    std::vector<const char*> cPaths;
+    for (const auto& path : paths)
+        cPaths.push_back(py::cast<std::string>(path).c_str());
+
+	SPLVerror error = splv_file_concat((uint32_t)cPaths.size(), cPaths.data(), outPath.c_str());
+	if(error != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to concatenate splv files with code " <<
+			error << " (" << splv_get_error_string(error) << ")\n";
+		throw std::runtime_error("");
+	}
+}
+
+uint32_t split(const std::string& path, float splitLength, const std::string& outDir)
+{
+    uint32_t numSplits = 0;
+    SPLVerror error = splv_file_split(path.c_str(), splitLength, outDir.c_str(), &numSplits);
+	if(error != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to split splv file with code " <<
+			error << " (" << splv_get_error_string(error) << ")\n";
+		throw std::runtime_error("");
+	}
+
+    return numSplits;
 }
 
 //-------------------------------------------//
@@ -364,5 +395,17 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 			"Abort encoding in error and close the output file");
 
 	m.def("get_vox_max_dimensions", &get_vox_max_dimensions,
+		py::arg("path"),
 		"Returns the maximum dimensions of frames in a MagicaVoxel .vox file");
+
+	m.def("concat", &concat,
+		py::arg("paths"),
+		py::arg("outPath"),
+		"Concatenates multiple SPLV files togethers");
+
+	m.def("split", &split,
+		py::arg("path"),
+		py::arg("splitLength"),
+		py::arg("outDir"),
+		"Splits an SPLV file into multiple files of the specified duration");
 }

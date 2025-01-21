@@ -42,6 +42,7 @@ add_library(splv_encoder_lib STATIC
     "src/splv_frame.cpp"
     "src/splv_vox_utils.cpp"
     "src/splv_nvdb_utils.cpp"
+    "src/splv_utils.cpp"
 )
 
 target_include_directories(splv_encoder_lib PUBLIC "include/")

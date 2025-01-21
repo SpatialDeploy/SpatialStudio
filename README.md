@@ -62,6 +62,11 @@ A frame from a `numpy` array is encoded using the `splv.SPLVencoder.encode_numpy
 
 Once all frames have been added, you must call `splv.SPLVencoder.finish()` to complete encoding. After `finish()` has been called, the encoder is invalid and no more frames can be added.
 
+Also included in the python bindings are some utility functions:
+- `splv.concat(paths, outPath)` concatenates multiple spatials together into one. The dimensions and framerate must all match.
+- `splv.split(path, splitLength, outDir)` splits a given spatial into multiple separate spatials, each with the specified duration.
+- `splv.get_vox_max_dimensions(path)` returns the maximum dimensions of the frames in a given `vox` file.
+
 ## Usage (CLI)
 The CLI must be called with `./splv_encoder -d [xSize] [ySize] [zSize] -f [framerate] -o [outputPath]`. 
 - `xSize`, `ySize`, and `zSize` define the dimensions of the spatial.
