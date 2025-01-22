@@ -38,7 +38,6 @@ class CMakeBuild(build_ext):
         cmake_build_dir = os.path.abspath(self.build_temp)
         os.makedirs(cmake_build_dir, exist_ok=True)
         python_executable = sys.executable
-        extra_cmake_args = os.environ.get("CMAKE_ARGS", "").split()
 
         # get cmake args (force all output files to be in root build directory)
         cmake_args = [
@@ -55,7 +54,6 @@ class CMakeBuild(build_ext):
             f"-DPython3_EXECUTABLE={python_executable}",
             "-DSPLV_BUILD_PYTHON_BINDINGS=ON",
         ]
-        cmake_args.extend(extra_cmake_args)
 
         # configure CMake
         subprocess.check_call(
