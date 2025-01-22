@@ -66,8 +66,7 @@ if(SPLV_BUILD_PYTHON_BINDINGS)
     target_include_directories(splv_encoder_py PUBLIC "include/" PRIVATE ${pybind11_INCLUDE_DIRS})
     target_link_libraries(splv_encoder_py PRIVATE 
         splv_encoder_lib
-        pybind11::lto 
-        pybind11::embed 
+        pybind11::lto
         pybind11::module
     )
 endif()
