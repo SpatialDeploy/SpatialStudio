@@ -10,9 +10,9 @@
 
 //-------------------------------------------//
 
-PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, std::string outPath)
+PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, std::string outPath)
 {
-	SPLVerror encoderError = splv_encoder_create(&m_encoder, width, height, depth, framerate, outPath.c_str());
+	SPLVerror encoderError = splv_encoder_create(&m_encoder, width, height, depth, framerate, gopSize, outPath.c_str());
 	if(encoderError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create SPLVencoder with code " <<
@@ -40,9 +40,8 @@ void PySPLVencoder::encode_nvdb_frame(std::string path, int32_t minX, int32_t mi
 		throw std::runtime_error("");
 	}
 
+	m_activeFrames.push_back(frame);
 	encode_frame(frame, removeNonvisible);
-	
-	splv_frame_destroy(frame);
 }
 
 void PySPLVencoder::encode_vox_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ, 
@@ -63,7 +62,7 @@ void PySPLVencoder::encode_vox_frame(std::string path, int32_t minX, int32_t min
 	for(uint32_t i = 0; i < numFrames; i++)
 		encode_frame(frames[i], removeNonvisible);
 
-	splv_vox_frames_destroy(frames, numFrames);
+	m_activeVoxFrames.push_back({ frames, numFrames });
 }
 
 void PySPLVencoder::encode_numpy_frame_float(py::array_t<float> arr, std::string lrAxis, std::string udAxis, 
@@ -244,13 +243,14 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 
 	//encode frame + cleanup:
 	//---------------
+	m_activeFrames.push_back(frame);
 	encode_frame(frame, removeNonvisible);
-
-	splv_frame_destroy(frame);
 }
 
 void PySPLVencoder::encode_frame(SPLVframe* frame, bool removeNonvisible)
 {
+	//preprocess frame:
+	//---------------
 	SPLVframe* processedFrame;
 	if(removeNonvisible)
 	{
@@ -261,19 +261,37 @@ void PySPLVencoder::encode_frame(SPLVframe* frame, bool removeNonvisible)
 				processingError << " (" << splv_get_error_string(processingError) << ")\n";
 			return;
 		}
+
+		m_activeFrames.push_back(processedFrame);
 	}
 	else
 		processedFrame = frame;
 
-	SPLVerror encodeError = splv_encoder_encode_frame(m_encoder, processedFrame);
+	//encode:
+	//---------------
+	splv_bool_t canRemove;
+	SPLVerror encodeError = splv_encoder_encode_frame(m_encoder, processedFrame, &canRemove);
 	if(encodeError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to encode frame with code " 
 			<< encodeError << " (" << splv_get_error_string(encodeError) << ")\n";
 	}
 
-	if(removeNonvisible)
-		splv_frame_destroy(processedFrame);
+	//free active frames:
+	//---------------
+	if(canRemove)
+		free_frames();
+}
+
+void PySPLVencoder::free_frames()
+{
+	for(uint32_t i = 0; i < (uint32_t)m_activeFrames.size(); i++)
+		splv_frame_destroy(m_activeFrames[i]);
+	m_activeFrames.clear();
+
+	for(uint32_t i = 0; i < (uint32_t)m_activeVoxFrames.size(); i++)
+		splv_vox_frames_destroy(m_activeVoxFrames[i].first, m_activeVoxFrames[i].second);
+	m_activeVoxFrames.clear();
 }
 
 SPLVaxis PySPLVencoder::parse_axis(std::string s)
@@ -352,11 +370,12 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 	m.doc() = "SPLV Encoder";
 
 	py::class_<PySPLVencoder>(m, "SPLVencoder")
-		.def(py::init<uint32_t, uint32_t, uint32_t, float, const std::string&>(),
+		.def(py::init<uint32_t, uint32_t, uint32_t, float, uint32_t, const std::string&>(),
 			py::arg("width"),
 			py::arg("height"),
 			py::arg("depth"),
 			py::arg("framerate"),
+			py::arg("gopSize"),
 			py::arg("outputPath"),
 			"Create a new SPLVencoder instance")
 		.def("encode_nvdb_frame", &PySPLVencoder::encode_nvdb_frame,

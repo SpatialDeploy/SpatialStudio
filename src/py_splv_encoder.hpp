@@ -18,7 +18,7 @@ namespace py = pybind11;
 class PySPLVencoder
 {
 public:
-	PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, std::string outPath);
+	PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, std::string outPath);
 
 	void encode_nvdb_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ,
 	                       int32_t maxX, int32_t maxY, int32_t maxZ, std::string lrAxis, 
@@ -36,10 +36,14 @@ public:
 private:
 	SPLVencoder* m_encoder;
 
+	std::vector<SPLVframe*> m_activeFrames;
+	std::vector<std::pair<SPLVframe**, uint32_t>> m_activeVoxFrames;
+
 	//either encodes floatArr or byteArr, depending on which is non-NULL
 	void encode_numpy_frame(py::array_t<float>* floatArr, py::array_t<uint8_t>* byteArr, std::string lrAxis, 
 	                        std::string udAxis, std::string fbAxis, bool removeNonvisible);
 	void encode_frame(SPLVframe* frame, bool removeNonvisible);
+	void free_frames();
 
 	static SPLVaxis parse_axis(std::string s);
 };

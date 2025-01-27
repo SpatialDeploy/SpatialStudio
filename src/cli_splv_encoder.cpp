@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include <vector>
 #include "math.h"
 #include "splv_encoder.h"
 #include "splv_vox_utils.h"
@@ -37,6 +38,12 @@ private:
 
 //-------------------------------------------//
 
+//all currently active frames
+static std::vector<SPLVframe*> g_activeFrames;
+static std::vector<std::pair<SPLVframe**, uint32_t>> g_activeVoxFrames;
+
+//-------------------------------------------//
+
 SPLVaxis parse_axis(std::string s)
 {
 	if(s == "x")
@@ -46,11 +53,24 @@ SPLVaxis parse_axis(std::string s)
 	else if(s == "z")
 		return SPLV_AXIS_Z;
 	else
-		throw std::invalid_argument("");
+	throw std::invalid_argument("");
+}
+
+void free_frames()
+{
+	for(uint32_t i = 0; i < (uint32_t)g_activeFrames.size(); i++)
+		splv_frame_destroy(g_activeFrames[i]);
+	g_activeFrames.clear();
+
+	for(uint32_t i = 0; i < (uint32_t)g_activeVoxFrames.size(); i++)
+		splv_vox_frames_destroy(g_activeVoxFrames[i].first, g_activeVoxFrames[i].second);
+	g_activeVoxFrames.clear();	
 }
 
 void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
 {
+	//preprocess frame:
+	//---------------
 	SPLVframe* processedFrame;
 	if(removeNonvisible)
 	{
@@ -61,11 +81,16 @@ void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
 				processingError << " (" << splv_get_error_string(processingError) << ")\n";
 			return;
 		}
+
+		g_activeFrames.push_back(processedFrame);
 	}
 	else
 		processedFrame = frame;
 
-	SPLVerror encodeError = splv_encoder_encode_frame(encoder, processedFrame);
+	//encode:
+	//---------------
+	splv_bool_t canRemove;
+	SPLVerror encodeError = splv_encoder_encode_frame(encoder, processedFrame, &canRemove);
 	if(encodeError != SPLV_SUCCESS)
 	{
 		std::cout << processedFrame->width << ", " << processedFrame->height << ", " << processedFrame->depth << "\n";
@@ -74,8 +99,10 @@ void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
 			<< encodeError << " (" << splv_get_error_string(encodeError) << ")\n";
 	}
 
-	if(removeNonvisible)
-		splv_frame_destroy(processedFrame);
+	//free active frames:
+	//---------------
+	if(canRemove)
+		free_frames();
 }
 
 //-------------------------------------------//
@@ -91,6 +118,8 @@ int main(int argc, const char** argv)
 
 	float framerate = INFINITY;
 	
+	int32_t gopSize = 1;
+
 	std::string outPath = "";
 
 	for(uint32_t i = 1; i < (uint32_t)argc; i++)
@@ -141,6 +170,27 @@ int main(int argc, const char** argv)
 				return -1;
 			}
 		}
+		else if(arg == "-g")
+		{
+			if(i + 1 >= (uint32_t)argc)
+			{
+				std::cout << "ERROR: not enough arguments supplied to \"-g\"" << std::endl;
+				return -1;
+			}
+
+			try
+			{
+				gopSize = std::stoi(argv[++i]);
+
+				if(gopSize <= 0)
+					throw std::invalid_argument("");
+			}
+			catch(std::exception e)
+			{
+				std::cout << "ERROR: invalid GOP size" << std::endl;
+				return -1;
+			}
+		}
 		else if(arg == "-o") //output file
 		{
 			if(i + 1 >= (uint32_t)argc)
@@ -180,7 +230,7 @@ int main(int argc, const char** argv)
 	//create outfile and encoder:
 	//---------------
 	SPLVencoder* encoder;
-	SPLVerror encoderError = splv_encoder_create(&encoder, xSize, ySize, zSize, framerate, outPath.c_str());
+	SPLVerror encoderError = splv_encoder_create(&encoder, xSize, ySize, zSize, framerate, gopSize, outPath.c_str());
 	if(encoderError != 	SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create encoder with error code " << 
@@ -242,9 +292,8 @@ int main(int argc, const char** argv)
 				continue;
 			}
 
+			g_activeFrames.push_back(frame);
 			encode_frame(encoder, frame, removeNonvisible);
-			
-			splv_frame_destroy(frame);
 		}
 		else if(command == "e_vox")
 		{
@@ -268,7 +317,7 @@ int main(int argc, const char** argv)
 			for(uint32_t i = 0; i < numFrames; i++)
 				encode_frame(encoder, frames[i], removeNonvisible);
 
-			splv_vox_frames_destroy(frames, numFrames);
+			g_activeVoxFrames.push_back({ frames, numFrames });
 		}
 		else if(command == "b")
 		{
@@ -336,11 +385,14 @@ int main(int argc, const char** argv)
 					finishError << " (" << splv_get_error_string(finishError) << ")\n";
 			}
 
+			free_frames();
 			break;
 		}
 		else if(command == "q")
 		{
 			splv_encoder_abort(encoder);
+
+			free_frames();
 			break;
 		}
 		else

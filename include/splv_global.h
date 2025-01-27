@@ -22,6 +22,23 @@
 
 //-------------------------------------------//
 
+typedef uint8_t splv_bool_t;
+
+#define SPLV_TRUE 1
+#define SPLV_FALSE 0
+
+//-------------------------------------------//
+
+/**
+ * a 3d coordinate
+ */
+typedef struct SPLVcoordinate
+{
+	uint32_t x;
+	uint32_t y;
+	uint32_t z;
+} SPLVcoordinate;
+
 /**
  * a 3d bounding box
  */

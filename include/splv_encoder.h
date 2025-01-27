@@ -12,6 +12,11 @@
 
 //-------------------------------------------//
 
+#define SPLV_MAGIC_WORD (('s' << 24) | ('p' << 16) | ('l' << 8) | ('v'))
+#define SPLV_VERSION ((0 << 24) | (0 << 16) | (1 << 8) | 0)
+
+//-------------------------------------------//
+
 /**
  * all state needed by an encoder
  */
@@ -23,7 +28,10 @@ typedef struct SPLVencoder
 
 	float framerate;
 	uint32_t frameCount;
-	SPLVdynArrayUint64 framePtrs;
+	SPLVdynArrayUint64 frameTable;
+
+	uint32_t gopSize;
+	SPLVframe* lastFrame;
 
 	std::ofstream* outFile; //TODO: c-style file
 } SPLVencoder;
@@ -33,12 +41,17 @@ typedef struct SPLVencoder
  */
 typedef struct SPLVfileHeader
 {
+	uint32_t magicWord;
+	uint32_t version;
+
 	uint32_t width;
 	uint32_t height;
 	uint32_t depth;
+
 	float framerate;
 	uint32_t frameCount;
 	float duration;
+	
 	uint64_t frameTablePtr;
 } SPLVfileHeader;
 
@@ -47,12 +60,14 @@ typedef struct SPLVfileHeader
 /**
  * creates a new encoder, call splv_encoder_finish() or splv_encoder_abort() to free any resources
  */
-SPLVerror splv_encoder_create(SPLVencoder** encoder, uint32_t width, uint32_t height, uint32_t depth, float framerate, const char* outPath);
+SPLVerror splv_encoder_create(SPLVencoder** encoder, uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, const char* outPath);
 
 /**
- * encodes a frame to the end of the encoded stream
+ * encodes a frame to the end of the encoded stream. You MUST keep any encoded frames in memory until
+ * either this function sets canFree to SPLV_TRUE, or splv_encoder_finish() is called. Once one of these
+ * conditions is met you can free all frames encoded thus far.
  */
-SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame);
+SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv_bool_t* canFree);
 
 /**
  * finishes encoding, writing metadata to the file, frees any resources from splv_encoder_create()

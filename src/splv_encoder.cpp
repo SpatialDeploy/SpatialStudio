@@ -9,7 +9,15 @@
 
 //-------------------------------------------//
 
-SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, uint32_t depth, float framerate, const char* outPath)
+typedef enum SPLVframeType
+{
+	SPLV_FRAME_TYPE_I = 0,
+	SPLV_FRAME_TYPE_P = 1
+} SPLVframeType;
+
+//-------------------------------------------//
+
+SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, const char* outPath)
 {
 	//validate params:
 	//---------------
@@ -31,6 +39,12 @@ SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, 
 		return SPLV_ERROR_INVALID_ARGUMENTS;
 	}
 
+	if(gopSize == 0)
+	{
+		SPLV_LOG_ERROR("gop size must be positive");
+		return SPLV_ERROR_INVALID_ARGUMENTS;
+	}
+
 	//allocate struct:
 	//---------------
 	*e = (SPLVencoder*)SPLV_MALLOC(sizeof(SPLVencoder));
@@ -47,13 +61,14 @@ SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, 
 	encoder->depth = depth;
 	encoder->framerate = framerate;
 	encoder->frameCount = 0;
+	encoder->gopSize = gopSize;
 
 	const uint32_t FRAME_PTR_INITIAL_CAP = 16;
-	SPLVerror framePtrError = splv_dyn_array_uint64_create(&encoder->framePtrs, FRAME_PTR_INITIAL_CAP);
-	if(framePtrError != SPLV_SUCCESS)
+	SPLVerror frameTableError = splv_dyn_array_uint64_create(&encoder->frameTable, FRAME_PTR_INITIAL_CAP);
+	if(frameTableError != SPLV_SUCCESS)
 	{
 		SPLV_LOG_ERROR("failed to create frame ptr array");
-		return framePtrError;
+		return frameTableError;
 	}
 
 	//open output file:
@@ -81,7 +96,7 @@ SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, 
 	return SPLV_SUCCESS;
 }
 
-SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame)
+SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv_bool_t* canFree)
 {
 	//validate:
 	//---------------
@@ -95,6 +110,14 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame)
 		return SPLV_ERROR_INVALID_ARGUMENTS;
 	}
 
+	//determine frame type:
+	//---------------
+	SPLVframeType frameType;
+	if(encoder->frameCount % encoder->gopSize == 0)
+		frameType = SPLV_FRAME_TYPE_I;
+	else
+		frameType = SPLV_FRAME_TYPE_P;
+
 	//compress map (convert to bitmap):
 	//---------------
 	uint32_t mapLenBitmap = widthMap * heightMap * depthMap;
@@ -107,6 +130,7 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame)
 
 	uint32_t numBricksOrdered = 0;
 	SPLVbrick** bricksOrdered = (SPLVbrick**)SPLV_MALLOC(frame->bricksLen * sizeof(SPLVbrick*));
+	SPLVcoordinate* brickPositionsOrdered = (SPLVcoordinate*)SPLV_MALLOC(frame->bricksLen * sizeof(SPLVcoordinate));
 
 	//we are writing bricks in xyz order, we MUST make sure to read them back in the same order
 	for(uint32_t xMap = 0; xMap < widthMap ; xMap++)
@@ -122,7 +146,9 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame)
 		if(frame->map[mapIdxRead] != SPLV_BRICK_IDX_EMPTY)
 		{
 			mapBitmap[mapIdxWriteArr] |= (1u << mapIdxWriteBit);
+
 			bricksOrdered[numBricksOrdered] = &frame->bricks[frame->map[mapIdxRead]];
+			brickPositionsOrdered[numBricksOrdered] = { xMap, yMap, zMap };
 			numBricksOrdered++;
 		}
 		else
@@ -144,15 +170,24 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame)
 	frameStream.write((const char*)&numBricksOrdered, sizeof(uint32_t));
 	frameStream.write((const char*)mapBitmap, mapLenBitmap * sizeof(uint32_t));
 	for(uint32_t i = 0; i < numBricksOrdered; i++)
-		splv_brick_serialize(bricksOrdered[i], frameStream);
+	{
+		if(frameType == SPLV_FRAME_TYPE_P)
+		{
+			SPLVcoordinate brickPos = brickPositionsOrdered[i];
+			splv_brick_serialize_predictive(bricksOrdered[i], brickPos.x, brickPos.y, brickPos.z, frameStream, encoder->lastFrame);
+		}
+		else
+			splv_brick_serialize(bricksOrdered[i], frameStream);
+	}
 
 	//compress serialized frame:
 	//---------------
 	uint64_t framePtr = encoder->outFile->tellp();
-	SPLVerror pushError = splv_dyn_array_uint64_push(&encoder->framePtrs, framePtr);
+	uint64_t frameTableEntry = ((uint64_t)frameType << 56) | framePtr;
+	SPLVerror pushError = splv_dyn_array_uint64_push(&encoder->frameTable, frameTableEntry);
 	if(pushError != SPLV_SUCCESS)
 	{
-		SPLV_LOG_ERROR("failed to push frame pointer to array");
+		SPLV_LOG_ERROR("failed to push frame table entry to array");
 		return pushError;
 	}
 
@@ -175,7 +210,10 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame)
 	SPLV_FREE(bricksOrdered);
 
 	encoder->frameCount++;
-
+	encoder->lastFrame = frame;
+	
+	//can only free previous frames if at end of GOP
+	*canFree = (encoder->frameCount % encoder->gopSize) == 0;
 	return SPLV_SUCCESS;
 }
 
@@ -184,11 +222,13 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 	//write frame table:
 	//---------------
 	uint64_t frameTablePtr = encoder->outFile->tellp();
-	encoder->outFile->write((const char*)encoder->framePtrs.arr, encoder->frameCount * sizeof(uint64_t));
+	encoder->outFile->write((const char*)encoder->frameTable.arr, encoder->frameCount * sizeof(uint64_t));
 
 	//write header:
 	//---------------
 	SPLVfileHeader header = {};
+	header.magicWord = SPLV_MAGIC_WORD;
+	header.version = SPLV_VERSION;
 	header.width = encoder->width;
 	header.height = encoder->height;
 	header.depth = encoder->depth;
@@ -208,7 +248,7 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 
 	//cleanup + return:
 	//---------------
-	splv_dyn_array_uint64_destroy(encoder->framePtrs);
+	splv_dyn_array_uint64_destroy(encoder->frameTable);
 	encoder->outFile->close();
 
 	SPLV_FREE(encoder);
@@ -218,7 +258,7 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 
 void splv_encoder_abort(SPLVencoder* encoder)
 {
-	splv_dyn_array_uint64_destroy(encoder->framePtrs);
+	splv_dyn_array_uint64_destroy(encoder->frameTable);
 	encoder->outFile->close();
 
 	SPLV_FREE(encoder);
