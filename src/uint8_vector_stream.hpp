@@ -3,6 +3,7 @@
  * contains definitions for a [i/o]stream of an std::vector of bytes
  */
 
+
 #ifndef UINT8_VECTOR_STREAM_H
 #define UINT8_VECTOR_STREAM_H
 
