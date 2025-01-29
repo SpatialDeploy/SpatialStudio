@@ -39,7 +39,7 @@ typedef struct SPLVbrick
 /**
  * sets a given voxel to be filled, having a given color
  */
-inline void splv_brick_set_voxel_filled(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t colorR, uint8_t colorG, uint8_t colorB)
+SPLV_API inline void splv_brick_set_voxel_filled(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t colorR, uint8_t colorG, uint8_t colorB)
 {
 	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);	
 	brick->bitmap[idx >> 5] |= 1 << (idx & 31);
@@ -53,7 +53,7 @@ inline void splv_brick_set_voxel_filled(SPLVbrick* brick, uint32_t x, uint32_t y
 /**
  * sets a given voxel to be empty
  */
-inline void splv_brick_set_voxel_empty(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z)
+SPLV_API inline void splv_brick_set_voxel_empty(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z)
 {
 	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);
 	
@@ -63,7 +63,7 @@ inline void splv_brick_set_voxel_empty(SPLVbrick* brick, uint32_t x, uint32_t y,
 /**
  * returns whether the voxel at the given location is filled
  */
-inline splv_bool_t splv_brick_get_voxel(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z)
+SPLV_API inline splv_bool_t splv_brick_get_voxel(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z)
 {
 	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);
 	return (brick->bitmap[idx >> 5] & (1 << (idx & 31))) != 0;
@@ -72,7 +72,7 @@ inline splv_bool_t splv_brick_get_voxel(SPLVbrick* brick, uint32_t x, uint32_t y
 /**
  * returns whether the voxel at the given location is filled, as well as its color
  */
-inline splv_bool_t splv_brick_get_voxel_color(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t* colorR, uint8_t* colorG, uint8_t* colorB)
+SPLV_API inline splv_bool_t splv_brick_get_voxel_color(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t* colorR, uint8_t* colorG, uint8_t* colorB)
 {
 	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);
 
@@ -87,7 +87,7 @@ inline splv_bool_t splv_brick_get_voxel_color(SPLVbrick* brick, uint32_t x, uint
 /**
  * clears a brick to be completely empty
  */
-void splv_brick_clear(SPLVbrick* brick);
+SPLV_API void splv_brick_clear(SPLVbrick* brick);
 
 /**
  * serializes a brick to the given file

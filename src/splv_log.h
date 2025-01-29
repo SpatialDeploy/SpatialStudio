@@ -1,5 +1,4 @@
-/**
- * splv_log.h
+/* splv_log.h
  * 
  * contains functions/macros for logging
  */

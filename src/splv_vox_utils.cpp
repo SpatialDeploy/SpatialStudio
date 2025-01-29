@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "splv_log.h"
 #include "splv_global.h"
+#include "splv_dyn_array.h"
 
 //-------------------------------------------//
 

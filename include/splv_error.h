@@ -6,6 +6,8 @@
 #ifndef SPLV_ERROR_H
 #define SPLV_ERROR_H
 
+#include "splv_global.h"
+
 //-------------------------------------------//
 
 /**
@@ -28,7 +30,7 @@ typedef enum SPLVerror
 /**
  * retruns a string describing an error
  */
-inline const char* splv_get_error_string(SPLVerror error)
+SPLV_API inline const char* splv_get_error_string(SPLVerror error)
 {
 	switch(error)
 	{

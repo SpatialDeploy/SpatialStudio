@@ -38,17 +38,17 @@ typedef struct SPLVframe
 /**
  * creates a new frame. DOES NOT CLEAR THE MAP TO BE EMPTY. call splv_frame_destroy() to free
  */
-SPLVerror splv_frame_create(SPLVframe** frame, uint32_t width, uint32_t height, uint32_t depth);
+SPLV_API SPLVerror splv_frame_create(SPLVframe** frame, uint32_t width, uint32_t height, uint32_t depth);
 
 /**
  * frees all resources allocated from splv_frame_create()
  */
-void splv_frame_destroy(SPLVframe* frame);
+SPLV_API void splv_frame_destroy(SPLVframe* frame);
 
 /**
  * gets the index into frame->map cooresponding to the given position
  */
-inline uint32_t splv_frame_get_map_idx(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z)
+SPLV_API inline uint32_t splv_frame_get_map_idx(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z)
 {
 	return x + frame->width * (y + frame->height * z);
 }
@@ -56,16 +56,16 @@ inline uint32_t splv_frame_get_map_idx(SPLVframe* frame, uint32_t x, uint32_t y,
 /**
  * returns a pointer to a fresh brick. does not add this brick to the map, useful as a "scratch buffer"
  */
-SPLVbrick* splv_frame_get_next_brick(SPLVframe* frame);
+SPLV_API SPLVbrick* splv_frame_get_next_brick(SPLVframe* frame);
 
 /**
  * adds the brick returned from splv_frame_get_next_brick(frame) to the map at the given location
  */
-SPLVerror splv_frame_push_next_brick(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z);
+SPLV_API SPLVerror splv_frame_push_next_brick(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z);
 
 /**
  * removes all nonvisible voxels from a frame, returning a newly created frame
  */
-SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** processedFrame);
+SPLV_API SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** processedFrame);
 
 #endif

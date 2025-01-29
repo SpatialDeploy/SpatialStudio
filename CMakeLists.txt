@@ -35,8 +35,8 @@ if(SPLV_BUILD_PYTHON_BINDINGS)
     FetchContent_MakeAvailable(pybind11)
 endif()
 
-# create shared library with common code
-add_library(splv_encoder_lib STATIC
+# set source files
+set(splv_src
     "src/splv_brick.cpp"
     "src/splv_encoder.cpp"
     "src/splv_frame.cpp"
@@ -44,6 +44,9 @@ add_library(splv_encoder_lib STATIC
     "src/splv_nvdb_utils.cpp"
     "src/splv_utils.cpp"
 )
+
+# create static library with common code
+add_library(splv_encoder_lib STATIC ${splv_src})
 
 target_include_directories(splv_encoder_lib PUBLIC "include/")
 target_link_libraries(splv_encoder_lib PUBLIC blosc_static)
@@ -69,4 +72,12 @@ if(SPLV_BUILD_PYTHON_BINDINGS)
         pybind11::lto
         pybind11::module
     )
+endif()
+
+# create shared library
+if(SPLV_BUILD_SHARED)
+    add_library(splv_encoder_shared SHARED ${splv_src})
+
+    target_include_directories(splv_encoder_shared PUBLIC "include/")
+    target_link_libraries(splv_encoder_shared PUBLIC blosc_static)
 endif()

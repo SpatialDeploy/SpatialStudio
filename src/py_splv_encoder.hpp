@@ -1,6 +1,6 @@
 /* py_splv_encoder.hpp
  *
- * contains data/functions necessary for the sply encoder python bindings
+ * contains data/functions necessary for the splv encoder python bindings
  */
 
 #ifndef PY_ENCODER_H
