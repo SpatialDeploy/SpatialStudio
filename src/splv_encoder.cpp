@@ -4,8 +4,8 @@
 #include "splv_log.h"
 #include "uint8_vector_stream.hpp"
 
-#define QC_IMPLEMENTATION
-#include "quickcompress.h"
+#define SPLV_RC_IMPLEMENTATION
+#include "splv_range_coder.h"
 
 //-------------------------------------------//
 
@@ -191,13 +191,17 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 		return pushError;
 	}
 
-	Uint8VectorIStream frameStreamDecompressed(frameBuf);
-	if(qc_compress(frameStreamDecompressed, *encoder->outFile) != QC_SUCCESS)
+	uint8_t* encodedBuf;
+	uint64_t encodedSize;
+
+	SPLVerror rangeCodeError = splv_rc_encode(frameBuf.size(), frameBuf.data(), &encodedBuf, &encodedSize);
+	if(rangeCodeError != SPLV_SUCCESS)
 	{
-		SPLV_LOG_ERROR("failed to compress frame");
-		return SPLV_ERROR_RUNTIME;
+		SPLV_LOG_ERROR("failed to range-code frame");
+		return rangeCodeError;	
 	}
 
+	encoder->outFile->write((const char*)encodedBuf, encodedSize);
 	if(!encoder->outFile->good())
 	{
 		SPLV_LOG_ERROR("failed to write encoded frame");
@@ -206,6 +210,8 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 
 	//cleanup + return:
 	//---------------
+	splv_rc_free_output_buf(encodedBuf);
+
 	SPLV_FREE(mapBitmap);
 	SPLV_FREE(bricksOrdered);
 
