@@ -1,11 +1,12 @@
 #include "splv_utils.h"
 
-#include <fstream>
 #include <math.h>
 #include "splv_log.h"
 #include "splv_encoder.h"
 
 //-------------------------------------------//
+
+//TODO: these functions DO NOT WORK. rewrite them when we have the decoder in this repo
 
 SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* outPath)
 {
@@ -19,29 +20,34 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 
 	//read first video metadata:
 	//---------------
-	std::ifstream firstFile(paths[0], std::ios::binary);
-	if(!firstFile.is_open())
+	FILE* firstFile = fopen(paths[0], "rb");
+	if(!firstFile)
 	{
 		SPLV_LOG_ERROR("failed to open input file for concatenation");
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
+	//no need to validate, will be validated when reading first in file in loop
 	SPLVfileHeader firstHeader;
-	firstFile.read((char*)&firstHeader, sizeof(SPLVfileHeader));
+	if(fread(&firstHeader, sizeof(SPLVfileHeader), 1, firstFile) < 1)
+	{
+		SPLV_LOG_ERROR("failed to read header from input file");
+		return SPLV_ERROR_FILE_READ;
+	}
 
-	firstFile.close();
+	fclose(firstFile);
 
 	//open output file:
 	//---------------
-	std::ofstream outFile(outPath, std::ios::binary);
-	if(!outFile.is_open())
+	FILE* outFile = fopen(outPath, "wb");
+	if(!outFile)
 	{
-		SPLV_LOG_ERROR("failed to open input file for concatenation");
+		SPLV_LOG_ERROR("failed to open output file for concatenation");
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
 	SPLVfileHeader outHeader = {0};
-	outFile.write((const char*)&outHeader, sizeof(SPLVfileHeader)); //write empty header, will rewrite when done
+	fwrite(&outHeader, sizeof(SPLVfileHeader), 1, outFile);
 
 	//create frame table + scratch buf:
 	//---------------
@@ -52,7 +58,7 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 	uint64_t* framePtrs = (uint64_t*)SPLV_MALLOC(framePtrCap * sizeof(uint64_t));
 	if(!framePtrs)
 	{
-		outFile.close();
+		fclose(outFile);
 		
 		SPLV_LOG_ERROR("failed to create frame ptr array");
 		return SPLV_ERROR_OUT_OF_MEMORY;
@@ -63,7 +69,7 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 	uint8_t* scratchBuf = (uint8_t*)SPLV_MALLOC(scratchBufSize);
 	if(!scratchBuf)
 	{
-		outFile.close();
+		fclose(outFile);
 
 		SPLV_LOG_ERROR("failed to create scratch buffer");
 		return SPLV_ERROR_OUT_OF_MEMORY;
@@ -71,22 +77,22 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 
 	//read each file, concatenate:
 	//---------------
-	uint64_t writePos = outFile.tellp();
+	long writePos = ftell(outFile);
+	if(writePos == -1L)
+	{
+		fclose(outFile);
+
+		SPLV_LOG_ERROR("failed to get write position of output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
 
 	for(uint32_t i = 0; i < numPaths; i++)
 	{
-		//ensure output file is valid
-		if(!outFile.good())
-		{
-			SPLV_LOG_ERROR("error writing to output file during concatenation");
-			return SPLV_ERROR_FILE_WRITE;
-		}
-
 		//open file
-		std::ifstream inFile(paths[i], std::ios::binary);
-		if(!inFile.is_open())
+		FILE* inFile = fopen(paths[i], "rb");
+		if(!inFile)
 		{
-			outFile.close();
+			fclose(outFile);
 
 			SPLV_LOG_ERROR("failed to open input file for concatenation");
 			return SPLV_ERROR_FILE_OPEN;
@@ -94,23 +100,64 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 
 		//read header + validate
 		SPLVfileHeader inHeader;
-		inFile.read((char*)&inHeader, sizeof(SPLVfileHeader));
+		if(fread(&inHeader, sizeof(SPLVfileHeader), 1, inFile) < 1)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to read header from input file");
+			return SPLV_ERROR_FILE_READ;
+		}
+
+		if(inHeader.magicWord != SPLV_MAGIC_WORD || inHeader.version != SPLV_VERSION)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("invalid input SPLV, mismatched magic word or version");
+			return SPLV_ERROR_INVALID_INPUT;
+		}
 
 		if(inHeader.width != firstHeader.width || inHeader.height != firstHeader.height || inHeader.depth != firstHeader.depth)
 		{
-			inFile.close();
-			outFile.close();
+			fclose(inFile);
+			fclose(outFile);
 
 			SPLV_LOG_ERROR("attempting to concatenate spatials with mismatched dimensions");
 			return SPLV_ERROR_INVALID_INPUT;
 		}
+
 		if(fabsf(inHeader.framerate - firstHeader.framerate) > 0.01f)
 			SPLV_LOG_WARNING("attempting to concatenate spatials with mismatched framerates, taking framerate of earlier spatial...");
 
 		//copy frames
-		inFile.seekg(0, std::ios::end);
-		uint64_t totalSize = inFile.tellg();
-		inFile.seekg(sizeof(SPLVfileHeader), std::ios::beg);
+		if(fseek(inFile, 0, SEEK_END) != 0)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to seek to end of input file");
+			return SPLV_ERROR_FILE_READ;
+		}
+
+		long totalSize = ftell(inFile);
+		if(totalSize == -1L)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to get total size of input file");
+			return SPLV_ERROR_FILE_READ;
+		}
+
+		if(fseek(inFile, sizeof(SPLVfileHeader), SEEK_SET) != 0)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to seek in input file");
+			return SPLV_ERROR_FILE_READ;
+		}
 
 		uint64_t frameTableSize = inHeader.frameCount * sizeof(uint64_t);
 		uint64_t framesSize = totalSize - sizeof(SPLVfileHeader) - frameTableSize;
@@ -123,16 +170,31 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 			scratchBuf = (uint8_t*)SPLV_REALLOC(scratchBuf, scratchBufSize);
 			if(!scratchBuf)
 			{
-				inFile.close();
-				outFile.close();
+				fclose(inFile);
+				fclose(outFile);
 
 				SPLV_LOG_ERROR("failed to realloc scratch buffer for concatenation");
 				return SPLV_ERROR_OUT_OF_MEMORY;
 			}
 		}
 
-		inFile.read((char*)scratchBuf, framesSize);
-		outFile.write((const char*)scratchBuf, framesSize);
+		if(fread(scratchBuf, 1, framesSize, inFile) < framesSize)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to read frames from input file");
+			return SPLV_ERROR_FILE_READ;
+		}
+
+		if(fwrite(scratchBuf, 1, framesSize, outFile) < framesSize)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to write frames to output file");
+			return SPLV_ERROR_FILE_WRITE;
+		}
 
 		//copy frame table
 		if(framePtrCap < frameCount + inHeader.frameCount)
@@ -143,32 +205,64 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 			framePtrs = (uint64_t*)SPLV_REALLOC(framePtrs, framePtrCap * sizeof(uint64_t));
 			if(!framePtrs)
 			{
-				inFile.close();
-				outFile.close();
+				fclose(inFile);
+				fclose(outFile);
 
 				SPLV_LOG_ERROR("failed to realloc frame ptr buffer for concatenation");
 				return SPLV_ERROR_OUT_OF_MEMORY;
 			}
 		}
 
-		inFile.read((char*)&framePtrs[frameCount], inHeader.frameCount * sizeof(uint64_t));
+		if(fread(&framePtrs[frameCount], sizeof(uint64_t), inHeader.frameCount, inFile) < inHeader.frameCount)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to read frame table from input file");
+			return SPLV_ERROR_FILE_READ;
+		}
+
 		for(uint64_t j = frameCount; j < frameCount + inHeader.frameCount; j++)
 			framePtrs[j] += writePos - sizeof(SPLVfileHeader);
 
 		frameCount += inHeader.frameCount;
 
 		//close file
-		writePos = outFile.tellp();
-		inFile.close();
+		writePos = ftell(outFile);
+		if(writePos == -1L)
+		{
+			fclose(inFile);
+			fclose(outFile);
+
+			SPLV_LOG_ERROR("failed to get write position of output file");
+			return SPLV_ERROR_FILE_WRITE;
+		}
+		fclose(inFile);
 	}
 
 	//write frame table:
 	//---------------
-	uint64_t frameTablePtr = outFile.tellp();
-	outFile.write((const char*)framePtrs, frameCount * sizeof(uint64_t));
+	uint64_t frameTablePtr = ftell(outFile);
+	if(frameTablePtr == -1L)
+	{
+		fclose(outFile);
+
+		SPLV_LOG_ERROR("failed to get frame table position");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	if(fwrite(framePtrs, sizeof(uint64_t), frameCount, outFile) < frameCount)
+	{
+		fclose(outFile);
+
+		SPLV_LOG_ERROR("failed to write frame table");
+		return SPLV_ERROR_FILE_WRITE;
+	}
 
 	//write header:
 	//---------------
+	outHeader.magicWord = SPLV_MAGIC_WORD;
+	outHeader.version = SPLV_VERSION;
 	outHeader.width = firstHeader.width;
 	outHeader.height = firstHeader.height;
 	outHeader.depth = firstHeader.depth;
@@ -177,12 +271,25 @@ SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* ou
 	outHeader.duration = (float)frameCount / firstHeader.framerate;
 	outHeader.frameTablePtr = frameTablePtr;
 
-	outFile.seekp(std::ios::beg);
-	outFile.write((const char*)&outHeader, sizeof(SPLVfileHeader));
+	if(fseek(outFile, 0, SEEK_SET) != 0)
+	{
+		fclose(outFile);
+
+		SPLV_LOG_ERROR("failed to seek to beginning of output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	if(fwrite(&outHeader, sizeof(SPLVfileHeader), 1, outFile) < 1)
+	{
+		fclose(outFile);
+
+		SPLV_LOG_ERROR("failed to write header to output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
 
 	//cleanup:
 	//---------------
-	outFile.close();
+	fclose(outFile);
 
 	SPLV_FREE(scratchBuf);
 	SPLV_FREE(framePtrs);
@@ -200,25 +307,39 @@ SPLVerror splv_file_split(const char* path, float splitLength, const char* outDi
 		return SPLV_ERROR_INVALID_ARGUMENTS;
 	}
 
-	//open input file, read metadata:
+	//open input file, read metadata, validate:
 	//---------------
-	std::ifstream inFile(path, std::ios::binary);
-	if(!inFile.is_open())
+	FILE* inFile = fopen(path, "rb");
+	if(!inFile)
 	{
 		SPLV_LOG_ERROR("failed to open input file for splitting");
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
 	SPLVfileHeader inHeader;
-	inFile.read((char*)&inHeader, sizeof(SPLVfileHeader));
+	if(fread(&inHeader, sizeof(SPLVfileHeader), 1, inFile) < 1)
+	{
+		fclose(inFile);
+	
+		SPLV_LOG_ERROR("failed to read header from input file");
+		return SPLV_ERROR_FILE_READ;
+	}
+
+	if(inHeader.magicWord != SPLV_MAGIC_WORD || inHeader.version != SPLV_VERSION)
+	{
+		fclose(inFile);
+
+		SPLV_LOG_ERROR("invalid input SPLV, mismatched magic word or version");
+		return SPLV_ERROR_INVALID_INPUT;
+	}
 
 	//calculate frames per split:
 	//---------------
 	uint32_t framesPerSplit = (uint32_t)(splitLength * inHeader.framerate);
 	if(framesPerSplit == 0)
 	{
-		inFile.close();
-	  
+		fclose(inFile);
+
 		SPLV_LOG_ERROR("split length too small, would result in 0 frames per split");
 		return SPLV_ERROR_INVALID_ARGUMENTS;
 	}
@@ -230,17 +351,18 @@ SPLVerror splv_file_split(const char* path, float splitLength, const char* outDi
 	uint64_t* framePtrs = (uint64_t*)SPLV_MALLOC((inHeader.frameCount + 1) * sizeof(uint64_t));
 	if(!framePtrs)
 	{
-		inFile.close();
+		fclose(inFile);
 
 		SPLV_LOG_ERROR("failed to allocate frame pointer array");
 		return SPLV_ERROR_OUT_OF_MEMORY;
 	}
 
-	inFile.seekg(inHeader.frameTablePtr, std::ios::beg);
-	inFile.read((char*)framePtrs, inHeader.frameCount * sizeof(uint64_t));
-	
-	inFile.seekg(0, std::ios::end);
-	framePtrs[inHeader.frameCount] = inFile.tellg();
+	fseek(inFile, (long)inHeader.frameTablePtr, SEEK_SET);
+	fread(framePtrs, inHeader.frameCount * sizeof(uint64_t), 1, inFile);
+
+	fseek(inFile, 0, SEEK_END);
+	long fileEnd = ftell(inFile);
+	framePtrs[inHeader.frameCount] = (uint64_t)fileEnd;
 
 	//create scratch buffer:
 	//---------------
@@ -249,7 +371,7 @@ SPLVerror splv_file_split(const char* path, float splitLength, const char* outDi
 	uint8_t* scratchBuf = (uint8_t*)SPLV_MALLOC(scratchBufSize);
 	if(!scratchBuf)
 	{
-		inFile.close();
+		fclose(inFile);
 
 		SPLV_LOG_ERROR("failed to create scratch buffer");
 		return SPLV_ERROR_OUT_OF_MEMORY;
@@ -273,10 +395,10 @@ SPLVerror splv_file_split(const char* path, float splitLength, const char* outDi
 		char outPath[512];
 		snprintf(outPath, sizeof(outPath), "%s/split_%d.splv", outDir, i);
 
-		std::ofstream outFile(outPath, std::ios::binary);
-		if(!outFile.is_open())
+		FILE* outFile = fopen(outPath, "wb");
+		if(!outFile)
 		{
-			inFile.close();
+			fclose(inFile);
 
 			SPLV_LOG_ERROR("failed to open output file for split");
 			return SPLV_ERROR_FILE_OPEN;
@@ -290,20 +412,24 @@ SPLVerror splv_file_split(const char* path, float splitLength, const char* outDi
 		{
 			while(scratchBufSize < frameDataSize || scratchBufSize < frameTableSize)
 				scratchBufSize *= 2;
-			
-			scratchBuf = (uint8_t*)SPLV_REALLOC(scratchBuf, scratchBufSize);
-			if(!scratchBuf)
-			{
-				inFile.close();
-				outFile.close();
 
-				SPLV_LOG_ERROR("failed to realloc scratch buffer for concatenation");
+			uint8_t* newBuf = (uint8_t*)SPLV_REALLOC(scratchBuf, scratchBufSize);
+			if(!newBuf)
+			{
+				fclose(outFile);
+				fclose(inFile);
+
+				SPLV_LOG_ERROR("failed to realloc scratch buffer for splitting");
 				return SPLV_ERROR_OUT_OF_MEMORY;
 			}
+
+			scratchBuf = newBuf;
 		}
 
 		//write header
 		SPLVfileHeader splitHeader;
+		splitHeader.magicWord = SPLV_MAGIC_WORD;
+		splitHeader.version = SPLV_VERSION;
 		splitHeader.width = inHeader.width;
 		splitHeader.height = inHeader.height;
 		splitHeader.depth = inHeader.depth;
@@ -312,34 +438,61 @@ SPLVerror splv_file_split(const char* path, float splitLength, const char* outDi
 		splitHeader.duration = (float)splitFrameCount / inHeader.framerate;
 		splitHeader.frameTablePtr = sizeof(SPLVfileHeader) + frameDataSize;
 
-		outFile.write((const char*)&splitHeader, sizeof(SPLVfileHeader));
+		//writr frame data
+		fwrite(&splitHeader, sizeof(SPLVfileHeader), 1, outFile);
 
-		//write frame data
-		inFile.seekg(framePtrs[startFrame], std::ios::beg);
-		inFile.read((char*)scratchBuf, frameDataSize);
-		outFile.write((const char*)scratchBuf, frameDataSize);
+		fseek(inFile, (long)framePtrs[startFrame], SEEK_SET);
+		fread(scratchBuf, frameDataSize, 1, inFile);
+
+		fwrite(scratchBuf, frameDataSize, 1, outFile);
 
 		//update + write frame table
-		inFile.seekg(inHeader.frameTablePtr + startFrame * sizeof(uint64_t), std::ios::beg);
-		inFile.read((char*)scratchBuf, frameTableSize);
+		fseek(inFile, (long)(inHeader.frameTablePtr + startFrame * sizeof(uint64_t)), SEEK_SET);
+
+		fread(scratchBuf, sizeof(uint64_t), splitFrameCount, inFile);
 
 		uint64_t firstPtr = *((uint64_t*)scratchBuf);
-
 		for(uint32_t j = 0; j < splitFrameCount; j++)
 			((uint64_t*)scratchBuf)[j] -= firstPtr - sizeof(SPLVfileHeader);
 
-		outFile.write((const char*)scratchBuf, frameTableSize);
+		fwrite(scratchBuf, sizeof(uint64_t), splitFrameCount, outFile);
 
-		//close output file
-		outFile.close();
+		//ensure no errors reading/writing
+		if(feof(outFile) || ferror(outFile))
+		{
+			fclose(outFile);
+			fclose(inFile);
+
+			SPLV_LOG_ERROR("error writing to split file");
+			return SPLV_ERROR_FILE_WRITE;
+		}
+
+		if((i != *numSplits -1 && feof(inFile)) || ferror(inFile))
+		{
+			fclose(outFile);
+			fclose(inFile);
+
+			SPLV_LOG_ERROR("error reading file to split");
+			return SPLV_ERROR_FILE_WRITE;
+		}
+
+		//close out file
+		if(fclose(outFile) != 0)
+		{
+			fclose(outFile);
+			fclose(inFile);
+
+			SPLV_LOG_ERROR("error closing split file");
+			return SPLV_ERROR_FILE_WRITE;
+		}
 	}
 
 	//cleanup:
 	//---------------
-	inFile.close();
-
 	SPLV_FREE(scratchBuf);
 	SPLV_FREE(framePtrs);
+
+	fclose(inFile);
 
 	return SPLV_SUCCESS;
 }

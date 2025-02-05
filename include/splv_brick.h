@@ -9,8 +9,8 @@
 
 #include "splv_error.h"
 #include "splv_global.h"
+#include "splv_buffer_io.h"
 #include <stdint.h>
-#include <fstream> //TODO: c-style file IO
 
 //-------------------------------------------//
 
@@ -90,15 +90,15 @@ SPLV_API inline splv_bool_t splv_brick_get_voxel_color(SPLVbrick* brick, uint32_
 SPLV_API void splv_brick_clear(SPLVbrick* brick);
 
 /**
- * serializes a brick to the given file
+ * serializes a brick to the given buffer writer
  */
-SPLVerror splv_brick_serialize(SPLVbrick* brick, std::ostream& out);
+SPLV_API SPLVerror splv_brick_serialize(SPLVbrick* brick, SPLVbufferWriter* out);
 
 typedef struct SPLVframe SPLVframe;
 
 /**
- * serializes a brick into the given file, using information from the previous frame to predict
+ * serializes a brick into the given buffer writer, using information from the previous frame to predict
  */
-SPLVerror splv_brick_serialize_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, std::ostream& out, SPLVframe* lastFrame);
+SPLV_API SPLVerror splv_brick_serialize_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame);
 
 #endif //#ifndef SPLV_BRICK_H

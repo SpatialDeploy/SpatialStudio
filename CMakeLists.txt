@@ -37,12 +37,12 @@ endif()
 
 # set source files
 set(splv_src
-    "src/splv_brick.cpp"
-    "src/splv_encoder.cpp"
-    "src/splv_frame.cpp"
-    "src/splv_vox_utils.cpp"
+    "src/splv_brick.c"
+    "src/splv_encoder.c"
+    "src/splv_frame.c"
+    "src/splv_vox_utils.c"
+    "src/splv_utils.c"
     "src/splv_nvdb_utils.cpp"
-    "src/splv_utils.cpp"
 )
 
 # create static library with common code

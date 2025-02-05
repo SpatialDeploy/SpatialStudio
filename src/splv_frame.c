@@ -100,9 +100,7 @@ SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** proc
 
 	//create new frame:
 	//---------------
-	SPLVerror frameError = splv_frame_create(processedFrame, frame->width, frame->height, frame->depth);
-	if(frameError != SPLV_SUCCESS)
-		return frameError;
+	SPLV_ERROR_PROPAGATE(splv_frame_create(processedFrame, frame->width, frame->height, frame->depth));
 
 	//add visible voxels to new frame:
 	//---------------
@@ -120,7 +118,7 @@ SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** proc
 		
 		SPLVbrick* brick = &frame->bricks[frame->map[mapIdx]];
 		
-		bool newBrickEmpty = true;
+		uint8_t newBrickEmpty = 1;
 		SPLVbrick* newBrick = splv_frame_get_next_brick(*processedFrame);
 
 		for(uint32_t zBrick = 0; zBrick < SPLV_BRICK_SIZE; zBrick++)
@@ -149,7 +147,7 @@ SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** proc
 			if(visible)
 			{
 				splv_brick_set_voxel_filled(newBrick, xBrick, yBrick, zBrick, r, g, b);
-				newBrickEmpty = false;
+				newBrickEmpty = 0;
 			}
 			else
 				splv_brick_set_voxel_empty(newBrick, xBrick, yBrick, zBrick);

@@ -34,7 +34,7 @@ void splv_brick_clear(SPLVbrick* brick)
 	memset(brick->bitmap, 0, sizeof(brick->bitmap));
 }
 
-SPLVerror splv_brick_serialize(SPLVbrick* brick, std::ostream& out)
+SPLVerror splv_brick_serialize(SPLVbrick* brick, SPLVbufferWriter* out)
 {
 	//initialize bytes:
 	//---------------
@@ -96,22 +96,16 @@ SPLVerror splv_brick_serialize(SPLVbrick* brick, std::ostream& out)
 	//write:
 	//---------------
 	uint8_t encodingType = (uint8_t)SPLV_BRICK_ENCODING_TYPE_I;
-	out.write((const char*)&encodingType, sizeof(uint8_t));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint8_t), &encodingType));
 
-	out.write((const char*)&voxelCount, sizeof(uint32_t));
-	out.write((const char*)bitmapBytes, numBitmapBytes * sizeof(uint8_t));
-	out.write((const char*)colorBytes, numColorBytes * sizeof(uint8_t));
-
-	if(!out.good())
-	{
-		SPLV_LOG_ERROR("error writing brick to output stream");
-		return SPLV_ERROR_FILE_WRITE;
-	}
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint32_t), &voxelCount));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numBitmapBytes * sizeof(uint8_t), bitmapBytes));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numColorBytes * sizeof(uint8_t), colorBytes));
 
 	return SPLV_SUCCESS;
 }
 
-SPLVerror splv_brick_serialize_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, std::ostream& out, SPLVframe* lastFrame)
+SPLVerror splv_brick_serialize_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame)
 {
 	//encode without prediction if last frame was empty:
 	//---------------
@@ -200,13 +194,13 @@ SPLVerror splv_brick_serialize_predictive(SPLVbrick* brick, uint32_t xMap, uint3
 	//write:
 	//---------------
 	uint8_t encodingType = (uint8_t)SPLV_BRICK_ENCODING_TYPE_P;
-	out.write((const char*)&encodingType, sizeof(uint8_t));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint8_t), &encodingType));
 	
 	uint8_t numGeomDiffEncoded = (uint8_t)numGeomDiff;
-	out.write((const char*)&numGeomDiffEncoded, sizeof(uint8_t));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint8_t), &numGeomDiffEncoded));
 
-	out.write((const char*)geomDiffBytes, (numGeomDiffBits + 7) / 8);
-	out.write((const char*)colorBytes, numColorBytes);
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, (numGeomDiffBits + 7) / 8, geomDiffBytes));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numColorBytes, colorBytes));
 
 	return SPLV_SUCCESS;
 }

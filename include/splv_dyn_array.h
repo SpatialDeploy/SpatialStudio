@@ -8,6 +8,7 @@
 
 #include "splv_error.h"
 #include "splv_global.h"
+#include "splv_log.h"
 #include <stdint.h>
 
 //-------------------------------------------//
@@ -22,24 +23,27 @@ typedef struct SPLVdynArrayUint64
 	uint64_t* arr;
 } SPLVdynArrayUint64;
 
-inline SPLVerror splv_dyn_array_uint64_create(SPLVdynArrayUint64* arr, uint64_t initialCap)
+SPLV_API inline SPLVerror splv_dyn_array_uint64_create(SPLVdynArrayUint64* arr, uint64_t initialCap)
 {
 	arr->len = 0;
 	arr->cap = initialCap;
 	arr->arr = (uint64_t*)SPLV_MALLOC(initialCap * sizeof(uint64_t));
 	if(!arr->arr)
+	{
+		SPLV_LOG_ERROR("failed to alloc dynamic array");
 		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
 
 	return SPLV_SUCCESS;
 }
 
-inline void splv_dyn_array_uint64_destroy(SPLVdynArrayUint64 arr)
+SPLV_API inline void splv_dyn_array_uint64_destroy(SPLVdynArrayUint64 arr)
 {
 	if(arr.arr)
 		SPLV_FREE(arr.arr);
 }
 
-inline SPLVerror splv_dyn_array_uint64_push(SPLVdynArrayUint64* arr, uint64_t val)
+SPLV_API inline SPLVerror splv_dyn_array_uint64_push(SPLVdynArrayUint64* arr, uint64_t val)
 {
 	arr->arr[arr->len] = val;
 	arr->len++;
@@ -49,7 +53,10 @@ inline SPLVerror splv_dyn_array_uint64_push(SPLVdynArrayUint64* arr, uint64_t va
 		uint64_t newCap = arr->cap * 2;
 		uint64_t* newArr = (uint64_t*)SPLV_REALLOC(arr->arr, newCap * sizeof(uint64_t));
 		if(!newArr)
+		{
+			SPLV_LOG_ERROR("failed to realloc dynamic array");
 			return SPLV_ERROR_OUT_OF_MEMORY;
+		}
 
 		arr->cap = newCap;
 		arr->arr = newArr;

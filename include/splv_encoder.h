@@ -6,10 +6,10 @@
 #ifndef SPLV_ENCODER_H
 #define SPLV_ENCODER_H
 
-#include <ostream> //TODO: c-style files
 #include "splv_frame.h"
 #include "splv_global.h"
 #include "splv_dyn_array.h"
+#include <stdio.h>
 
 //-------------------------------------------//
 
@@ -34,7 +34,7 @@ typedef struct SPLVencoder
 	uint32_t gopSize;
 	SPLVframe* lastFrame;
 
-	std::ofstream* outFile; //TODO: c-style file
+	FILE* outFile;
 } SPLVencoder;
 
 /**

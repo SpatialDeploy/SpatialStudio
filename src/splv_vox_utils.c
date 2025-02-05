@@ -85,7 +85,7 @@ SPLVerror splv_vox_load(const char* path, SPLVframe*** outFrames, uint32_t* numO
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
-	uint32_t id;
+	uint32_t id = 0;
 	fread(&id, sizeof(uint32_t), 1, file);
 	if(id != SPLV_VOX_CHUNK_ID('V', 'O', 'X', ' '))
 	{
@@ -96,7 +96,7 @@ SPLVerror splv_vox_load(const char* path, SPLVframe*** outFrames, uint32_t* numO
 	}
 
 	//TODO: ensure version is supported
-	uint32_t version;
+	uint32_t version = 0;
 	fread(&version, sizeof(uint32_t), 1, file);
 
 	//allocate dynamic arrays for tracking models:
@@ -172,19 +172,19 @@ SPLVerror splv_vox_load(const char* path, SPLVframe*** outFrames, uint32_t* numO
 				break;
 			}
 
-			uint32_t nodeId;
+			uint32_t nodeId = 0;
 			fread(&nodeId, sizeof(uint32_t), 1, file);
 
-			SPLVvoxDict nodeAttribs;
+			SPLVvoxDict nodeAttribs = {0};
 			_splv_vox_read_dict(file, &nodeAttribs); //we dont need this, so we dont care if theres an error
 			_splv_vox_free_dict(nodeAttribs);
 
-			uint32_t numModels;
+			uint32_t numModels = 0;
 			fread(&numModels, sizeof(uint32_t), 1, file);
 
 			for(uint32_t i = 0; i < numModels; i++)
 			{
-				uint32_t modelId;
+				uint32_t modelId = UINT32_MAX;
 				fread(&modelId, sizeof(uint32_t), 1, file);
 
 				SPLVvoxDict modelAttribs;
@@ -342,7 +342,7 @@ SPLVerror splv_vox_get_max_dimensions(const char* path, uint32_t* xSize, uint32_
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
-	uint32_t id;
+	uint32_t id = 0;
 	fread(&id, sizeof(uint32_t), 1, file);
 	if(id != SPLV_VOX_CHUNK_ID('V', 'O', 'X', ' '))
 	{
@@ -353,7 +353,7 @@ SPLVerror splv_vox_get_max_dimensions(const char* path, uint32_t* xSize, uint32_
 	}
 
 	//TODO: ensure version is supported
-	uint32_t version;
+	uint32_t version = 0;
 	fread(&version, sizeof(uint32_t), 1, file);
 
 	//read all chunks, looking for size chunk:
@@ -377,9 +377,9 @@ SPLVerror splv_vox_get_max_dimensions(const char* path, uint32_t* xSize, uint32_
 		{
 		case SPLV_VOX_CHUNK_ID('S', 'I', 'Z', 'E'):
 		{
-			uint32_t newXsize;
-			uint32_t newYsize;
-			uint32_t newZsize;
+			uint32_t newXsize = 0;
+			uint32_t newYsize = 0;
+			uint32_t newZsize = 0;
 
 			fread(&newXsize, sizeof(uint32_t), 1, file);
 			fread(&newYsize, sizeof(uint32_t), 1, file);
@@ -399,7 +399,7 @@ SPLVerror splv_vox_get_max_dimensions(const char* path, uint32_t* xSize, uint32_
 		}
 
 		fseek(file, chunk.endPtr, SEEK_SET);
-	}	
+	}
 
 	//cleanup + return:
 	//---------------
@@ -496,7 +496,7 @@ SPLVerror _splv_vox_create_frame(FILE* file, SPLVframe** outFrame, uint64_t xyzi
 
 SPLVvoxChunk _splv_vox_read_chunk(FILE* file)
 {
-	SPLVvoxChunk chunk;
+	SPLVvoxChunk chunk = {0};
 	fread(&chunk, 3 * sizeof(uint32_t), 1, file); //read id, size, childSize
 	chunk.endPtr = (uint32_t)ftell(file) + chunk.len + chunk.childLen;
 
@@ -508,7 +508,7 @@ SPLVerror _splv_vox_read_dict(FILE* file, SPLVvoxDict* dict)
 	dict->keys = NULL;
 	dict->vals = NULL;
 
-	uint32_t numEntries;
+	uint32_t numEntries = 0;
 	fread(&numEntries, sizeof(uint32_t), 1, file);
 
 	dict->numEntries = numEntries;
@@ -526,13 +526,13 @@ SPLVerror _splv_vox_read_dict(FILE* file, SPLVvoxDict* dict)
 
 	for(uint32_t i = 0; i < numEntries; i++)
 	{
-		uint32_t strLenKey;
+		uint32_t strLenKey = 0;
 		fread(&strLenKey, sizeof(uint32_t), 1, file);
 		char* key = (char*)SPLV_MALLOC(strLenKey + 1);
 		fread(key, strLenKey, 1, file);
 		key[strLenKey] = '\0';
 
-		uint32_t strLenVal;
+		uint32_t strLenVal = 0;
 		fread(&strLenVal, sizeof(uint32_t), 1, file);
 		char* val = (char*)SPLV_MALLOC(strLenVal + 1);
 		fread(val, strLenVal, 1, file);

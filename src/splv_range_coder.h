@@ -169,9 +169,7 @@ static inline SPLVerror splv_rc_encoder_encode(SPLVrcEncoder* enc, SPLVrcFreqTab
 	while(enc->range < SPLV_RC_MIN_RANGE)
 	{
 		splv_rc_digit_t topDigit = (splv_rc_digit_t)(enc->low >> SPLV_RC_NORM_SHIFT);
-		SPLVerror writeError = splv_rc_encoder_emit_digit(topDigit, outBuf, outBufSize, encodedSize);
-		if(writeError != SPLV_SUCCESS)
-			return writeError;
+		SPLV_ERROR_PROPAGATE(splv_rc_encoder_emit_digit(topDigit, outBuf, outBufSize, encodedSize));
 		
 		if((enc->low & SPLV_RC_NORM_MASK) + enc->range <= SPLV_RC_NORM_MASK)
 		{
@@ -195,9 +193,7 @@ static inline SPLVerror splv_rc_encoder_finish(SPLVrcEncoder* enc, uint8_t** out
 	while((enc->low & SPLV_RC_NORM_MASK) + enc->range <= SPLV_RC_NORM_MASK) 
 	{
 		splv_rc_digit_t topDigit = (splv_rc_digit_t)(enc->low >> SPLV_RC_NORM_SHIFT);
-		SPLVerror writeError = splv_rc_encoder_emit_digit(topDigit, outBuf, outBufSize, outBufWriteIdx);
-		if(writeError != SPLV_SUCCESS)
-			return writeError;
+		SPLV_ERROR_PROPAGATE(splv_rc_encoder_emit_digit(topDigit, outBuf, outBufSize, outBufWriteIdx));
 
 		enc->low   = (enc->low   << SPLV_RC_NUM_DIGIT_BITS) & SPLV_RC_STATE_MASK;
 		enc->range = (enc->range << SPLV_RC_NUM_DIGIT_BITS) & SPLV_RC_STATE_MASK;
@@ -209,9 +205,7 @@ static inline SPLVerror splv_rc_encoder_finish(SPLVrcEncoder* enc, uint8_t** out
 	while(code > 0)
 	{
 		splv_rc_digit_t topDigit = (splv_rc_digit_t)(code >> SPLV_RC_NORM_SHIFT);
-		SPLVerror writeError = splv_rc_encoder_emit_digit(topDigit, outBuf, outBufSize, outBufWriteIdx);
-		if(writeError != SPLV_SUCCESS)
-			return writeError;
+		SPLV_ERROR_PROPAGATE(splv_rc_encoder_emit_digit(topDigit, outBuf, outBufSize, outBufWriteIdx));
 
 		code = (code << SPLV_RC_NUM_DIGIT_BITS) & SPLV_RC_STATE_MASK;
 	}
@@ -397,7 +391,13 @@ SPLVerror splv_rc_encode(uint64_t inBufLen, uint8_t* inBuf, uint8_t** outBuf, ui
 
 	SPLVerror startError = splv_rc_encoder_start(&enc, outBuf, &outBufSize, encodedSize);
 	if(startError != SPLV_SUCCESS)
+	{
+		SPLV_FREE(*outBuf);
+		*outBuf = NULL;
+		*encodedSize = 0;
+
 		return startError;
+	}
 
 	for(uint32_t i = 0; i < inBufLen; i++)
 	{

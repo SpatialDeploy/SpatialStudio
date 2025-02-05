@@ -2,7 +2,7 @@
 
 #include "splv_morton_lut.h"
 #include "splv_log.h"
-#include "uint8_vector_stream.hpp"
+#include "splv_buffer_io.h"
 
 #define SPLV_RC_IMPLEMENTATION
 #include "splv_range_coder.h"
@@ -64,25 +64,12 @@ SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, 
 	encoder->gopSize = gopSize;
 
 	const uint32_t FRAME_PTR_INITIAL_CAP = 16;
-	SPLVerror frameTableError = splv_dyn_array_uint64_create(&encoder->frameTable, FRAME_PTR_INITIAL_CAP);
-	if(frameTableError != SPLV_SUCCESS)
-	{
-		SPLV_LOG_ERROR("failed to create frame ptr array");
-		return frameTableError;
-	}
+	SPLV_ERROR_PROPAGATE(splv_dyn_array_uint64_create(&encoder->frameTable, FRAME_PTR_INITIAL_CAP));
 
 	//open output file:
 	//---------------
-
-	//TODO: c-style files
-	encoder->outFile = new std::ofstream(outPath, std::ios::binary);
+	encoder->outFile = fopen(outPath, "wb");
 	if(!encoder->outFile)
-	{
-		SPLV_LOG_ERROR("failed to allocate std::ofstream for output file");
-		return SPLV_ERROR_OUT_OF_MEMORY;
-	}
-
-	if(!encoder->outFile->is_open())
 	{
 		SPLV_LOG_ERROR("failed to open output file");
 		return SPLV_ERROR_FILE_OPEN;
@@ -90,8 +77,12 @@ SPLVerror splv_encoder_create(SPLVencoder** e, uint32_t width, uint32_t height, 
 
 	//write empty header (will write over with complete header when encoding is finished):
 	//---------------
-	SPLVfileHeader emptyHeader = {};
-	encoder->outFile->write((const char*)&emptyHeader, sizeof(emptyHeader));
+	SPLVfileHeader emptyHeader = {0};
+	if(fwrite(&emptyHeader, sizeof(SPLVfileHeader), 1, encoder->outFile) < 1)
+	{
+		SPLV_LOG_ERROR("failed to write empty header to output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
 
 	return SPLV_SUCCESS;
 }
@@ -148,7 +139,7 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 			mapBitmap[mapIdxWriteArr] |= (1u << mapIdxWriteBit);
 
 			bricksOrdered[numBricksOrdered] = &frame->bricks[frame->map[mapIdxRead]];
-			brickPositionsOrdered[numBricksOrdered] = { xMap, yMap, zMap };
+			brickPositionsOrdered[numBricksOrdered] = (SPLVcoordinate){ xMap, yMap, zMap };
 			numBricksOrdered++;
 		}
 		else
@@ -164,45 +155,45 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 
 	//seralize frame:
 	//---------------
-	std::vector<uint8_t> frameBuf; //TODO: c-style buffer
-	Uint8VectorOStream frameStream(frameBuf);
+	SPLVbufferWriter frameWriter;
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_create(&frameWriter, 0));
 
-	frameStream.write((const char*)&numBricksOrdered, sizeof(uint32_t));
-	frameStream.write((const char*)mapBitmap, mapLenBitmap * sizeof(uint32_t));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(&frameWriter, sizeof(uint32_t), &numBricksOrdered));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(&frameWriter, mapLenBitmap * sizeof(uint32_t), mapBitmap));
+
 	for(uint32_t i = 0; i < numBricksOrdered; i++)
 	{
 		if(frameType == SPLV_FRAME_TYPE_P)
 		{
 			SPLVcoordinate brickPos = brickPositionsOrdered[i];
-			splv_brick_serialize_predictive(bricksOrdered[i], brickPos.x, brickPos.y, brickPos.z, frameStream, encoder->lastFrame);
+			splv_brick_serialize_predictive(bricksOrdered[i], brickPos.x, brickPos.y, brickPos.z, &frameWriter, encoder->lastFrame);
 		}
 		else
-			splv_brick_serialize(bricksOrdered[i], frameStream);
+			splv_brick_serialize(bricksOrdered[i], &frameWriter);
 	}
 
-	//compress serialized frame:
+	//get frame ptr:
 	//---------------
-	uint64_t framePtr = encoder->outFile->tellp();
-	uint64_t frameTableEntry = ((uint64_t)frameType << 56) | framePtr;
-	SPLVerror pushError = splv_dyn_array_uint64_push(&encoder->frameTable, frameTableEntry);
-	if(pushError != SPLV_SUCCESS)
+	long framePtr = ftell(encoder->outFile);
+	if(framePtr	== -1L)
 	{
-		SPLV_LOG_ERROR("failed to push frame table entry to array");
-		return pushError;
+		SPLV_LOG_ERROR("error getting file write position");
+		return SPLV_ERROR_FILE_WRITE;
 	}
 
+	uint64_t frameTableEntry = ((uint64_t)frameType << 56) | (uint64_t)framePtr;
+	SPLV_ERROR_PROPAGATE(splv_dyn_array_uint64_push(&encoder->frameTable, frameTableEntry));
+
+	//entropy code frame:
+	//---------------
 	uint8_t* encodedBuf;
 	uint64_t encodedSize;
 
-	SPLVerror rangeCodeError = splv_rc_encode(frameBuf.size(), frameBuf.data(), &encodedBuf, &encodedSize);
-	if(rangeCodeError != SPLV_SUCCESS)
-	{
-		SPLV_LOG_ERROR("failed to range-code frame");
-		return rangeCodeError;	
-	}
+	SPLV_ERROR_PROPAGATE(splv_rc_encode(frameWriter.writePos, frameWriter.buf, &encodedBuf, &encodedSize));
 
-	encoder->outFile->write((const char*)encodedBuf, encodedSize);
-	if(!encoder->outFile->good())
+	//write encoded frame to output file:
+	//---------------
+	if(fwrite(encodedBuf, encodedSize, 1, encoder->outFile) < 1)
 	{
 		SPLV_LOG_ERROR("failed to write encoded frame");
 		return SPLV_ERROR_FILE_WRITE;
@@ -211,6 +202,7 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 	//cleanup + return:
 	//---------------
 	splv_rc_free_output_buf(encodedBuf);
+	splv_buffer_writer_destroy(frameWriter);
 
 	SPLV_FREE(mapBitmap);
 	SPLV_FREE(bricksOrdered);
@@ -227,12 +219,23 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 {
 	//write frame table:
 	//---------------
-	uint64_t frameTablePtr = encoder->outFile->tellp();
-	encoder->outFile->write((const char*)encoder->frameTable.arr, encoder->frameCount * sizeof(uint64_t));
+	long frameTablePtr = ftell(encoder->outFile);
+	if(frameTablePtr == -1L)
+	{
+		SPLV_LOG_ERROR("error getting file write position");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	uint64_t frameTableSize = encoder->frameCount * sizeof(uint64_t);
+	if(fwrite(encoder->frameTable.arr, frameTableSize, 1, encoder->outFile) < 1)
+	{
+		SPLV_LOG_ERROR("failed writing frame table to file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
 
 	//write header:
 	//---------------
-	SPLVfileHeader header = {};
+	SPLVfileHeader header = {0};
 	header.magicWord = SPLV_MAGIC_WORD;
 	header.version = SPLV_VERSION;
 	header.width = encoder->width;
@@ -241,21 +244,29 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 	header.framerate = encoder->framerate;
 	header.frameCount = encoder->frameCount;
 	header.duration = (float)encoder->frameCount / encoder->framerate;
-	header.frameTablePtr = frameTablePtr;
+	header.frameTablePtr = (uint64_t)frameTablePtr;
 
-	encoder->outFile->seekp(std::ios::beg);
-	encoder->outFile->write((const char*)&header, sizeof(SPLVfileHeader));
-
-	if(!encoder->outFile->good())
+	if(fseek(encoder->outFile, 0, SEEK_SET) != 0)
 	{
-		SPLV_LOG_ERROR("failed to write file header");
+		SPLV_LOG_ERROR("error seeking to beginning of output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	if(fwrite(&header, sizeof(SPLVfileHeader), 1, encoder->outFile) < 1)
+	{
+		SPLV_LOG_ERROR("failed writing header to output file");
 		return SPLV_ERROR_FILE_WRITE;
 	}
 
 	//cleanup + return:
 	//---------------
 	splv_dyn_array_uint64_destroy(encoder->frameTable);
-	encoder->outFile->close();
+
+	if(fclose(encoder->outFile) != 0)
+	{
+		SPLV_LOG_ERROR("error closing output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
 
 	SPLV_FREE(encoder);
 	
@@ -265,7 +276,7 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 void splv_encoder_abort(SPLVencoder* encoder)
 {
 	splv_dyn_array_uint64_destroy(encoder->frameTable);
-	encoder->outFile->close();
+	fclose(encoder->outFile);
 
 	SPLV_FREE(encoder);
 }
