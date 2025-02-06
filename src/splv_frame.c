@@ -9,31 +9,28 @@ inline uint8_t _splv_frame_get_voxel(SPLVframe* frame, int32_t x, int32_t y, int
 
 //-------------------------------------------//
 
-SPLVerror splv_frame_create(SPLVframe** f, uint32_t width, uint32_t height, uint32_t depth)
+SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, uint32_t depth)
 {
-	//allocate+initialize struct:
+	//validate params:
 	//---------------
-	*f = (SPLVframe*)SPLV_MALLOC(sizeof(SPLVframe));
-	SPLVframe* frame = *f;
+	SPLV_ASSERT(width > 0 && height > 0 && depth > 0, 
+		"frame dimensions must be positive");
 
-	if(!frame)
-	{
-		SPLV_LOG_ERROR("failed to allocate SPLVframe struct");
-		return SPLV_ERROR_OUT_OF_MEMORY;
-	}
+	//initialize:
+	//---------------
+	memset(frame, 0, sizeof(SPLVframe)); //clear any ptrs to NULL
 
 	frame->width  = width;
 	frame->height = height;
 	frame->depth  = depth;
-
-	frame->map    = NULL;
-	frame->bricks = NULL;
 
 	//allocate map + bricks:
 	//---------------
 	frame->map = (uint32_t*)SPLV_MALLOC(width * height * depth * sizeof(uint32_t));
 	if(!frame->map)
 	{
+		splv_frame_destroy(frame);
+
 		SPLV_LOG_ERROR("failed to allocate frame map");
 		return SPLV_ERROR_OUT_OF_MEMORY;
 	}
@@ -42,6 +39,8 @@ SPLVerror splv_frame_create(SPLVframe** f, uint32_t width, uint32_t height, uint
 	frame->bricks = (SPLVbrick*)SPLV_MALLOC(BRICK_CAP_INITIAL * sizeof(SPLVbrick));
 	if(!frame->bricks)
 	{
+		splv_frame_destroy(frame);
+
 		SPLV_LOG_ERROR("failed tok allocate frame brick array");
 		return SPLV_ERROR_OUT_OF_MEMORY;
 	}
@@ -58,8 +57,6 @@ void splv_frame_destroy(SPLVframe* frame)
 		SPLV_FREE(frame->map);
 	if(frame->bricks)
 		SPLV_FREE(frame->bricks);
-
-	SPLV_FREE(frame);
 }
 
 SPLVbrick* splv_frame_get_next_brick(SPLVframe* frame)
@@ -69,6 +66,8 @@ SPLVbrick* splv_frame_get_next_brick(SPLVframe* frame)
 
 SPLVerror splv_frame_push_next_brick(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z)
 {
+	SPLV_ASSERT(x < frame->width && y < frame->height && z < frame->depth, "map coordinates out of bounds");
+
 	uint32_t idx = x + frame->width * (y + frame->height * z);
 	frame->map[idx] = frame->bricksLen;
 
@@ -91,7 +90,7 @@ SPLVerror splv_frame_push_next_brick(SPLVframe* frame, uint32_t x, uint32_t y, u
 	return SPLV_SUCCESS;
 }
 
-SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** processedFrame)
+SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe* processedFrame)
 {
 	//NOTE: this function considers a voxel nonvisible if all 6 of its neighbors
 	//are filled. However, there can exist nonvisible voxels not satisfying this
@@ -112,14 +111,14 @@ SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** proc
 
 		if(frame->map[mapIdx] == SPLV_BRICK_IDX_EMPTY)
 		{
-			(*processedFrame)->map[mapIdx] = SPLV_BRICK_IDX_EMPTY;
+			processedFrame->map[mapIdx] = SPLV_BRICK_IDX_EMPTY;
 			continue;
 		}
 		
 		SPLVbrick* brick = &frame->bricks[frame->map[mapIdx]];
 		
 		uint8_t newBrickEmpty = 1;
-		SPLVbrick* newBrick = splv_frame_get_next_brick(*processedFrame);
+		SPLVbrick* newBrick = splv_frame_get_next_brick(processedFrame);
 
 		for(uint32_t zBrick = 0; zBrick < SPLV_BRICK_SIZE; zBrick++)
 		for(uint32_t yBrick = 0; yBrick < SPLV_BRICK_SIZE; yBrick++)
@@ -154,12 +153,15 @@ SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** proc
 		}
 
 		if(newBrickEmpty)
-			(*processedFrame)->map[mapIdx] = SPLV_BRICK_IDX_EMPTY;
+			processedFrame->map[mapIdx] = SPLV_BRICK_IDX_EMPTY;
 		else
 		{
-			SPLVerror pushError = splv_frame_push_next_brick(*processedFrame, xMap, yMap, zMap);
+			SPLVerror pushError = splv_frame_push_next_brick(processedFrame, xMap, yMap, zMap);
 			if(pushError != SPLV_SUCCESS)
+			{
+				splv_frame_destroy(processedFrame);
 				return pushError;
+			}
 		}
 	}
 

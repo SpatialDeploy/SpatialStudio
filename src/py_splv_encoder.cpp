@@ -12,6 +12,34 @@
 
 PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, std::string outPath)
 {
+	//validate:
+	//---------------
+	if(width == 0 || height == 0 || depth == 0)
+	{
+		std::cout << "ERROR: dimensions must be positive\n";
+		throw std::runtime_error("");
+	}
+
+	if(width % SPLV_BRICK_SIZE != 0 || height % SPLV_BRICK_SIZE != 0 || depth % SPLV_BRICK_SIZE != 0)
+	{
+		std::cout << "ERROR: dimensions must be multiples of SPLV_BRICK_SIZE (" << SPLV_BRICK_SIZE << ")\n";
+		throw std::runtime_error("");
+	}
+
+	if(framerate <= 0.0f)
+	{
+		std::cout << "ERROR: framerate must be positive\n";
+		throw std::runtime_error("");
+	}
+
+	if(gopSize == 0)
+	{
+		std::cout << "ERROR: GOP size must be positive\n";
+		throw std::runtime_error("");
+	}
+
+	//create encoder:
+	//---------------
 	SPLVerror encoderError = splv_encoder_create(&m_encoder, width, height, depth, framerate, gopSize, outPath.c_str());
 	if(encoderError != SPLV_SUCCESS)
 	{
@@ -25,13 +53,20 @@ void PySPLVencoder::encode_nvdb_frame(std::string path, int32_t minX, int32_t mi
                                       int32_t maxX, int32_t maxY, int32_t maxZ, std::string lrAxisStr, 
                                       std::string udAxisStr, std::string fbAxisStr, bool removeNonvisible)
 {
+	//parse + validate:
+	//---------------
 	SPLVaxis lrAxis = parse_axis(lrAxisStr);
 	SPLVaxis udAxis = parse_axis(udAxisStr);
 	SPLVaxis fbAxis = parse_axis(fbAxisStr);
 
+	validate_bounding_box(minX, minY, minZ, maxX, maxY, maxZ);
+	validate_axes(lrAxis, udAxis, fbAxis);
+
+	//create frame, encode:
+	//---------------
 	SPLVboundingBox boundingBox = { minX, minY, minZ, maxX, maxY, maxZ };
 
-	SPLVframe* frame;
+	SPLVframe frame;
 	SPLVerror nvdbError = splv_nvdb_load(((std::string)path).c_str(), &frame, &boundingBox, lrAxis, udAxis, fbAxis);
 	if(nvdbError != SPLV_SUCCESS)
 	{
@@ -41,12 +76,18 @@ void PySPLVencoder::encode_nvdb_frame(std::string path, int32_t minX, int32_t mi
 	}
 
 	m_activeFrames.push_back(frame);
-	encode_frame(frame, removeNonvisible);
+	encode_frame(&frame, removeNonvisible);
 }
 
 void PySPLVencoder::encode_vox_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ, 
                                      int32_t maxX, int32_t maxY, int32_t maxZ, bool removeNonvisible)
 {
+	//validate:
+	//--------------
+	validate_bounding_box(minX, minY, minZ, maxX, maxY, maxZ);
+
+	//create frame, encode:
+	//---------------
 	SPLVboundingBox boundingBox = { minX, minY, minZ, maxX, maxY, maxZ };
 
 	uint32_t numFrames;
@@ -79,18 +120,24 @@ void PySPLVencoder::encode_numpy_frame_byte(py::array_t<uint8_t> arr, std::strin
 
 void PySPLVencoder::finish()
 {
-	SPLVerror finishError = splv_encoder_finish(m_encoder);
+	SPLVerror finishError = splv_encoder_finish(&m_encoder);
 	if(finishError != SPLV_SUCCESS)
 	{
+		free_frames();
+
 		std::cout << "ERROR: failed to finish encoding with code " << 
 			finishError << " (" << splv_get_error_string(finishError) << ")\n";
 		throw std::runtime_error("");
 	}
+
+	free_frames();
 }
 
 void PySPLVencoder::abort()
 {
-	splv_encoder_abort(m_encoder);
+	splv_encoder_abort(&m_encoder);
+
+	free_frames();
 }
 
 //-------------------------------------------//
@@ -147,11 +194,7 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 	SPLVaxis udAxis = parse_axis(udAxisStr);
 	SPLVaxis fbAxis = parse_axis(fbAxisStr);
 
-	if(lrAxis == udAxis || lrAxis == fbAxis || udAxis == fbAxis)
-	{
-		std::cout << "ERROR: axes must be distinct\n";
-		throw std::runtime_error("");
-	}
+	validate_axes(lrAxis, udAxis, fbAxis);
 
 	//create frame:
 	//---------------
@@ -160,7 +203,7 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 	uint32_t heightMap = sizes[(uint32_t)udAxis] / SPLV_BRICK_SIZE;
 	uint32_t depthMap  = sizes[(uint32_t)fbAxis] / SPLV_BRICK_SIZE;
 
-	SPLVframe* frame;
+	SPLVframe frame;
 	SPLVerror frameError = splv_frame_create(&frame, widthMap, heightMap, depthMap);
 	if(frameError != SPLV_SUCCESS)
 	{
@@ -170,7 +213,7 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 	}
 
 	for(uint32_t i = 0; i < widthMap * heightMap * depthMap; i++)
-		frame->map[i] = SPLV_BRICK_IDX_EMPTY;
+		frame.map[i] = SPLV_BRICK_IDX_EMPTY;
 
 	uint8_t* arr = (uint8_t*)buf.ptr;
 
@@ -219,24 +262,26 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 		uint32_t yBrick = yWrite % SPLV_BRICK_SIZE;
 		uint32_t zBrick = zWrite % SPLV_BRICK_SIZE;
 
-		uint32_t mapIdx = splv_frame_get_map_idx(frame, xMap, yMap, zMap);
+		uint32_t mapIdx = splv_frame_get_map_idx(&frame, xMap, yMap, zMap);
 
 		SPLVbrick* brick;
-		if(frame->map[mapIdx] == SPLV_BRICK_IDX_EMPTY)
+		if(frame.map[mapIdx] == SPLV_BRICK_IDX_EMPTY)
 		{
-			brick = splv_frame_get_next_brick(frame);
+			brick = splv_frame_get_next_brick(&frame);
 			splv_brick_clear(brick);
 
-			SPLVerror pushError = splv_frame_push_next_brick(frame, xMap, yMap, zMap);
+			SPLVerror pushError = splv_frame_push_next_brick(&frame, xMap, yMap, zMap);
 			if(pushError != SPLV_SUCCESS)
 			{
+				splv_frame_destroy(&frame);
+
 				std::cout << "ERROR: failed to push brick to frame with code " << 
 					frameError << " (" << splv_get_error_string(frameError) << ")\n";
 				throw std::runtime_error("");
 			}
 		}
 		else
-			brick = &frame->bricks[frame->map[mapIdx]];
+			brick = &frame.bricks[frame.map[mapIdx]];
 
 		splv_brick_set_voxel_filled(brick, xBrick, yBrick, zBrick, r, g, b);
 	}
@@ -244,14 +289,26 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 	//encode frame + cleanup:
 	//---------------
 	m_activeFrames.push_back(frame);
-	encode_frame(frame, removeNonvisible);
+	encode_frame(&frame, removeNonvisible);
 }
+
+//-------------------------------------------//
 
 void PySPLVencoder::encode_frame(SPLVframe* frame, bool removeNonvisible)
 {
+	//validate:
+	//---------------
+	if(frame->width  * SPLV_BRICK_SIZE != m_encoder.width  || 
+	   frame->height * SPLV_BRICK_SIZE != m_encoder.height || 
+	   frame->depth  * SPLV_BRICK_SIZE != m_encoder.depth)
+	{
+		std::cout << "ERROR: frame dimensions do not match encoder's\n";
+		throw std::runtime_error("");
+	}
+
 	//preprocess frame:
 	//---------------
-	SPLVframe* processedFrame;
+	SPLVframe processedFrame;
 	if(removeNonvisible)
 	{
 		SPLVerror processingError = splv_frame_remove_nonvisible_voxels(frame, &processedFrame);
@@ -259,22 +316,22 @@ void PySPLVencoder::encode_frame(SPLVframe* frame, bool removeNonvisible)
 		{
 			std::cout << "ERROR: failed to remove nonvisible voxels with code " <<
 				processingError << " (" << splv_get_error_string(processingError) << ")\n";
-			return;
+			throw std::runtime_error("");
 		}
 
 		m_activeFrames.push_back(processedFrame);
+		frame = &processedFrame;
 	}
-	else
-		processedFrame = frame;
 
 	//encode:
 	//---------------
 	splv_bool_t canRemove;
-	SPLVerror encodeError = splv_encoder_encode_frame(m_encoder, processedFrame, &canRemove);
+	SPLVerror encodeError = splv_encoder_encode_frame(&m_encoder, frame, &canRemove);
 	if(encodeError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to encode frame with code " 
 			<< encodeError << " (" << splv_get_error_string(encodeError) << ")\n";
+		throw std::runtime_error("");
 	}
 
 	//free active frames:
@@ -286,13 +343,15 @@ void PySPLVencoder::encode_frame(SPLVframe* frame, bool removeNonvisible)
 void PySPLVencoder::free_frames()
 {
 	for(uint32_t i = 0; i < (uint32_t)m_activeFrames.size(); i++)
-		splv_frame_destroy(m_activeFrames[i]);
+		splv_frame_destroy(&m_activeFrames[i]);
 	m_activeFrames.clear();
 
 	for(uint32_t i = 0; i < (uint32_t)m_activeVoxFrames.size(); i++)
 		splv_vox_frames_destroy(m_activeVoxFrames[i].first, m_activeVoxFrames[i].second);
 	m_activeVoxFrames.clear();
 }
+
+//-------------------------------------------//
 
 SPLVaxis PySPLVencoder::parse_axis(std::string s)
 {
@@ -306,6 +365,33 @@ SPLVaxis PySPLVencoder::parse_axis(std::string s)
 	{
 		std::cout << "ERROR: invalid axis, must be one of \"x\", \"y\", or \"z\"\n";
 		throw std::invalid_argument("");
+	}
+}
+
+void PySPLVencoder::validate_axes(SPLVaxis lrAxis, SPLVaxis udAxis, SPLVaxis fbAxis)
+{
+	if(lrAxis == udAxis || lrAxis == fbAxis || udAxis == fbAxis)
+	{
+		std::cout << "ERROR: axes must be distinct" << std::endl;
+		throw std::runtime_error("");
+	}
+}
+
+void PySPLVencoder::validate_bounding_box(int32_t minX, int32_t minY, int32_t minZ, int32_t maxX, int32_t maxY, int32_t maxZ)
+{
+	int32_t xSize = maxX - minX + 1;
+	int32_t ySize = maxY - minY + 1;
+	int32_t zSize = maxZ - minZ + 1;
+	if(xSize <= 0 || ySize <= 0 || zSize <= 0)
+	{
+		std::cout << "ERROR: bounding box dimensions must be positive" << std::endl;
+		throw std::runtime_error("");
+	}
+
+	if(xSize % SPLV_BRICK_SIZE != 0 || ySize % SPLV_BRICK_SIZE != 0 || zSize % SPLV_BRICK_SIZE != 0)
+	{
+		std::cout << "ERROR: bounding box dimensions must be multiples of SPLV_BRICK_SIZE" << std::endl;
+		throw std::runtime_error("");
 	}
 }
 

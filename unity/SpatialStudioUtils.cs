@@ -42,8 +42,8 @@ public static class SpatialStudioUtils
 		UInt32 heightMap = sizes[(Int32)udAxis] / SPLVbrick.SIZE;
 		UInt32 depthMap  = sizes[(Int32)fbAxis] / SPLVbrick.SIZE;
 
-		IntPtr frame = IntPtr.Zero;
-		SPLVerror frameError = SpatialStudio.splv_frame_create(ref frame, widthMap, heightMap, depthMap);
+		IntPtr frame = Marshal.AllocHGlobal(sizeof(SPLVframe));
+		SPLVerror frameError = SpatialStudio.splv_frame_create(frame, widthMap, heightMap, depthMap);
 		if(frameError != SPLVerror.SUCCESS)
 			throw new Exception($"Error creating SPLV frame: ({frameError})");
 

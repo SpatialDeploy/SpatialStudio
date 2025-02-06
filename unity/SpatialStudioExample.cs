@@ -24,8 +24,8 @@ public class SpatialStudioExample : MonoBehaviour
 		//---------------
 		IntPtr outPath = Marshal.StringToHGlobalAnsi("C:\\Users\\danie\\Downloads\\test.splv");
 
-		IntPtr encoder = IntPtr.Zero;
-		SPLVerror encoderError = SpatialStudio.splv_encoder_create(ref encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, 1, outPath);
+		IntPtr encoder = Marshal.AllocHGlobal(sizeof(SPLVencoder));
+		SPLVerror encoderError = SpatialStudio.splv_encoder_create(encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, 1, outPath);
 		if(encoderError != SPLVerror.SUCCESS)
 			throw new Exception($"Failed to create SPLVencoder: ({encoderError})");
 

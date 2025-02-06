@@ -6,30 +6,24 @@
 
 //-------------------------------------------//
 
-SPLVerror splv_nvdb_load(const char* path, SPLVframe** outFrame, SPLVboundingBox* bbox, SPLVaxis lrAxis, SPLVaxis udAxis, SPLVaxis fbAxis)
+SPLVerror splv_nvdb_load(const char* path, SPLVframe* outFrame, SPLVboundingBox* bbox, SPLVaxis lrAxis, SPLVaxis udAxis, SPLVaxis fbAxis)
 {
-	//get size of region + validate:
+	//get size of region:
 	//---------------
 	uint32_t xSize = bbox->xMax - bbox->xMin + 1;
 	uint32_t ySize = bbox->yMax - bbox->yMin + 1;
 	uint32_t zSize = bbox->zMax - bbox->zMin + 1;
 
-	if(xSize % SPLV_BRICK_SIZE != 0 || ySize % SPLV_BRICK_SIZE != 0 || zSize % SPLV_BRICK_SIZE != 0)
-	{
-		SPLV_LOG_ERROR("frame dimensions must be a multiple of SPLV_BRICK_SIZE");
-		return SPLV_ERROR_INVALID_ARGUMENTS;
-	}
-
-	if(lrAxis == udAxis || lrAxis == fbAxis || udAxis == fbAxis)
-	{
-		SPLV_LOG_ERROR("axes must be distinct");
-		return SPLV_ERROR_INVALID_ARGUMENTS;
-	}
-
 	uint32_t sizes[3] = {xSize, ySize, zSize};
 	uint32_t width  = sizes[(uint32_t)lrAxis];
 	uint32_t height = sizes[(uint32_t)udAxis];
 	uint32_t depth  = sizes[(uint32_t)fbAxis];
+
+	//validate:
+	//---------------
+	SPLV_ASSERT(xSize % SPLV_BRICK_SIZE == 0 && ySize % SPLV_BRICK_SIZE == 0 && zSize % SPLV_BRICK_SIZE == 0,
+		"frame dimensions must be a multiple of SPLV_BRICK_SIZE");
+	SPLV_ASSERT(lrAxis != udAxis && lrAxis != fbAxis && udAxis != fbAxis, "axes must be distinct");
 
 	//open file:
 	//---------------
@@ -68,7 +62,7 @@ SPLVerror splv_nvdb_load(const char* path, SPLVframe** outFrame, SPLVboundingBox
 	for(uint32_t yMap = 0; yMap < heightMap; yMap++)
 	for(uint32_t xMap = 0; xMap < widthMap ; xMap++)
 	{
-		SPLVbrick* brick = splv_frame_get_next_brick(*outFrame);
+		SPLVbrick* brick = splv_frame_get_next_brick(outFrame);
 		bool brickCreated = false;
 
 		for(uint32_t zBrick = 0; zBrick < SPLV_BRICK_SIZE; zBrick++)
@@ -104,14 +98,17 @@ SPLVerror splv_nvdb_load(const char* path, SPLVframe** outFrame, SPLVboundingBox
 
 		if(brickCreated)
 		{
-			SPLVerror pushError = splv_frame_push_next_brick(*outFrame, xMap, yMap, zMap);
+			SPLVerror pushError = splv_frame_push_next_brick(outFrame, xMap, yMap, zMap);
 			if(pushError != SPLV_SUCCESS)
+			{
+				splv_frame_destroy(outFrame);
 				return pushError;
+			}
 		}
 		else
 		{
-			uint32_t mapIdx = splv_frame_get_map_idx(*outFrame, xMap, yMap, zMap);
-			(*outFrame)->map[mapIdx] = SPLV_BRICK_IDX_EMPTY;
+			uint32_t mapIdx = splv_frame_get_map_idx(outFrame, xMap, yMap, zMap);
+			outFrame->map[mapIdx] = SPLV_BRICK_IDX_EMPTY;
 		}
 	}
 

@@ -37,6 +37,12 @@ typedef enum SPLVerror
                                 if(SPLV_UNIQUE_ERRORVAR != SPLV_SUCCESS) \
                                     return SPLV_UNIQUE_ERRORVAR;         \
 
+#ifdef SPLV_DEBUG
+	#define SPLV_ASSERT(c,m) if(!(c)) { printf("SPLV ASSERTION FAIL: %s\n", m); exit(-1); }
+#else
+	#define SPLV_ASSERT(c,m)
+#endif
+
 //-------------------------------------------//
 
 /**
@@ -62,6 +68,8 @@ SPLV_API inline const char* splv_get_error_string(SPLVerror error)
 		return "file write";
 	case SPLV_ERROR_RUNTIME:
 		return "runtime";
+	case SPLV_ERROR_INTERNAL:
+		return "internal";
 	default:
 		return "unknown error";
 	}

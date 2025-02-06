@@ -34,18 +34,21 @@ public:
 	void abort();
 
 private:
-	SPLVencoder* m_encoder;
+	SPLVencoder m_encoder;
 
-	std::vector<SPLVframe*> m_activeFrames;
+	std::vector<SPLVframe> m_activeFrames;
 	std::vector<std::pair<SPLVframe**, uint32_t>> m_activeVoxFrames;
 
 	//either encodes floatArr or byteArr, depending on which is non-NULL
 	void encode_numpy_frame(py::array_t<float>* floatArr, py::array_t<uint8_t>* byteArr, std::string lrAxis, 
 	                        std::string udAxis, std::string fbAxis, bool removeNonvisible);
+	
 	void encode_frame(SPLVframe* frame, bool removeNonvisible);
 	void free_frames();
 
 	static SPLVaxis parse_axis(std::string s);
+	static void validate_axes(SPLVaxis lrAxis, SPLVaxis udAxis, SPLVaxis fbAxis);
+	static void validate_bounding_box(int32_t minX, int32_t minY, int32_t minZ, int32_t maxX, int32_t maxY, int32_t maxZ);
 };
 
 //-------------------------------------------//

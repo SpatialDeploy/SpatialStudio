@@ -38,7 +38,7 @@ typedef struct SPLVframe
 /**
  * creates a new frame. DOES NOT CLEAR THE MAP TO BE EMPTY. call splv_frame_destroy() to free
  */
-SPLV_API SPLVerror splv_frame_create(SPLVframe** frame, uint32_t width, uint32_t height, uint32_t depth);
+SPLV_API SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, uint32_t depth);
 
 /**
  * frees all resources allocated from splv_frame_create()
@@ -66,6 +66,6 @@ SPLV_API SPLVerror splv_frame_push_next_brick(SPLVframe* frame, uint32_t x, uint
 /**
  * removes all nonvisible voxels from a frame, returning a newly created frame
  */
-SPLV_API SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe** processedFrame);
+SPLV_API SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe* processedFrame);
 
 #endif

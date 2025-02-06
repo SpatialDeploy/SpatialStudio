@@ -39,7 +39,7 @@ private:
 //-------------------------------------------//
 
 //all currently active frames
-static std::vector<SPLVframe*> g_activeFrames;
+static std::vector<SPLVframe> g_activeFrames;
 static std::vector<std::pair<SPLVframe**, uint32_t>> g_activeVoxFrames;
 
 //-------------------------------------------//
@@ -59,7 +59,7 @@ SPLVaxis parse_axis(std::string s)
 void free_frames()
 {
 	for(uint32_t i = 0; i < (uint32_t)g_activeFrames.size(); i++)
-		splv_frame_destroy(g_activeFrames[i]);
+		splv_frame_destroy(&g_activeFrames[i]);
 	g_activeFrames.clear();
 
 	for(uint32_t i = 0; i < (uint32_t)g_activeVoxFrames.size(); i++)
@@ -69,9 +69,19 @@ void free_frames()
 
 void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
 {
+	//validate:
+	//---------------
+	if(frame->width  * SPLV_BRICK_SIZE != encoder->width  || 
+	   frame->height * SPLV_BRICK_SIZE != encoder->height || 
+	   frame->depth  * SPLV_BRICK_SIZE != encoder->depth)
+	{
+		std::cout << "ERROR: frame dimensions do not match encoder dimensions" << std::endl;
+		return;
+	}
+
 	//preprocess frame:
 	//---------------
-	SPLVframe* processedFrame;
+	SPLVframe processedFrame;
 	if(removeNonvisible)
 	{
 		SPLVerror processingError = splv_frame_remove_nonvisible_voxels(frame, &processedFrame);
@@ -83,18 +93,15 @@ void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
 		}
 
 		g_activeFrames.push_back(processedFrame);
+		frame = &processedFrame;
 	}
-	else
-		processedFrame = frame;
 
 	//encode:
 	//---------------
 	splv_bool_t canRemove;
-	SPLVerror encodeError = splv_encoder_encode_frame(encoder, processedFrame, &canRemove);
+	SPLVerror encodeError = splv_encoder_encode_frame(encoder, frame, &canRemove);
 	if(encodeError != SPLV_SUCCESS)
 	{
-		std::cout << processedFrame->width << ", " << processedFrame->height << ", " << processedFrame->depth << "\n";
-
 		std::cout << "ERROR: failed to encode frame with code " 
 			<< encodeError << " (" << splv_get_error_string(encodeError) << ")\n";
 	}
@@ -107,14 +114,14 @@ void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
 
 //-------------------------------------------//
 
-//usage: splv_encoder -d [xSize] [ySize] [zSize] -f [framerate] -o [output file]
+//usage: splv_encoder -d [width] [height] [depth] -f [framerate] -o [output file]
 int main(int argc, const char** argv)
 {
 	//parse and validate command line args:
 	//---------------
-	int32_t xSize = INT32_MAX;
-	int32_t ySize = INT32_MAX;
-	int32_t zSize = INT32_MAX;
+	int32_t width = INT32_MAX;
+	int32_t height = INT32_MAX;
+	int32_t depth = INT32_MAX;
 
 	float framerate = INFINITY;
 	
@@ -130,17 +137,20 @@ int main(int argc, const char** argv)
 		{
 			if(i + 3 >= (uint32_t)argc)
 			{
-				std::cout << "ERROR: not enough arguments supplied to \"-d\" (need xSize, ySize, and zSize)" << std::endl;
+				std::cout << "ERROR: not enough arguments supplied to \"-d\" (need width, height, and depth)" << std::endl;
 				return -1;
 			}
 
 			try
 			{
-				xSize = std::stoi(argv[++i]);
-				ySize = std::stoi(argv[++i]);
-				zSize = std::stoi(argv[++i]);
+				width = std::stoi(argv[++i]);
+				height = std::stoi(argv[++i]);
+				depth = std::stoi(argv[++i]);
 
-				if(xSize <= 0 || ySize <= 0 || zSize <= 0)
+				if(width <= 0 || height <= 0 || depth <= 0)
+					throw std::invalid_argument("");
+
+				if(width % SPLV_BRICK_SIZE != 0 || height % SPLV_BRICK_SIZE != 0 || depth % SPLV_BRICK_SIZE != 0)
 					throw std::invalid_argument("");
 			}
 			catch(std::exception e)
@@ -204,14 +214,14 @@ int main(int argc, const char** argv)
 		else
 		{
 			std::cout << "ERROR: unrecognized command line argument \"" << arg << "\"" << std::endl;
-			std::cout << "VALID USAGE: splv_encoder -d [xSize] [ySize] [zSize] -f [framerate] -o [output file]" << std::endl;
+			std::cout << "VALID USAGE: splv_encoder -d [width] [height] [depth] -f [framerate] -o [output file]" << std::endl;
 			return -1;
 		}
 	}
 
-	if(xSize == INT32_MAX || ySize == INT32_MAX || zSize == INT32_MAX)
+	if(width == INT32_MAX || height == INT32_MAX || depth == INT32_MAX)
 	{
-		std::cout << "ERROR: no dimensions specified (use \"-d [xSize] [ySize] [zSize]\")" << std::endl;
+		std::cout << "ERROR: no dimensions specified (use \"-d [width] [height] [depth]\")" << std::endl;
 		return -1;
 	}
 
@@ -229,9 +239,9 @@ int main(int argc, const char** argv)
 
 	//create outfile and encoder:
 	//---------------
-	SPLVencoder* encoder;
-	SPLVerror encoderError = splv_encoder_create(&encoder, xSize, ySize, zSize, framerate, gopSize, outPath.c_str());
-	if(encoderError != 	SPLV_SUCCESS)
+	SPLVencoder encoder;
+	SPLVerror encoderError = splv_encoder_create(&encoder, width, height, depth, framerate, gopSize, outPath.c_str());
+	if(encoderError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create encoder with error code " << 
 			encoderError << "(" << splv_get_error_string(encoderError) << ")\n";
@@ -254,7 +264,7 @@ int main(int argc, const char** argv)
 
 	//check for commands in loop:
 	//---------------
-	SPLVboundingBox boundingBox = { 0, 0, 0, xSize - 1, ySize - 1, zSize - 1 };
+	SPLVboundingBox boundingBox = { 0, 0, 0, width - 1, height - 1, depth - 1 };
 
 	SPLVaxis lrAxis = SPLV_AXIS_X;
 	SPLVaxis udAxis = SPLV_AXIS_Y;
@@ -283,7 +293,7 @@ int main(int argc, const char** argv)
 				continue;
 			}
 
-			SPLVframe* frame;
+			SPLVframe frame;
 			SPLVerror nvdbError = splv_nvdb_load(((std::string)path).c_str(), &frame, &boundingBox, lrAxis, udAxis, fbAxis);
 			if(nvdbError != SPLV_SUCCESS)
 			{
@@ -293,7 +303,7 @@ int main(int argc, const char** argv)
 			}
 
 			g_activeFrames.push_back(frame);
-			encode_frame(encoder, frame, removeNonvisible);
+			encode_frame(&encoder, &frame, removeNonvisible);
 		}
 		else if(command == "e_vox")
 		{
@@ -315,7 +325,7 @@ int main(int argc, const char** argv)
 			}
 
 			for(uint32_t i = 0; i < numFrames; i++)
-				encode_frame(encoder, frames[i], removeNonvisible);
+				encode_frame(&encoder, frames[i], removeNonvisible);
 
 			g_activeVoxFrames.push_back({ frames, numFrames });
 		}
@@ -323,9 +333,24 @@ int main(int argc, const char** argv)
 		{
 			int32_t newMinX, newMinY, newMinZ;
 			int32_t newMaxX, newMaxY, newMaxZ;
-			if (!(stream >> newMinX >> newMinY >> newMinZ >> newMaxX >> newMaxY >> newMaxZ)) 
+			if(!(stream >> newMinX >> newMinY >> newMinZ >> newMaxX >> newMaxY >> newMaxZ)) 
 			{
 				std::cout << "ERROR: not enough coordinates specified for bounding box" << std::endl;
+				continue;
+			}
+
+			int32_t newXsize = newMaxX - newMinX + 1;
+			int32_t newYsize = newMaxY - newMinY + 1;
+			int32_t newZsize = newMaxZ - newMinZ + 1;
+			if(newXsize <= 0 || newYsize <= 0 || newZsize <= 0)
+			{
+				std::cout << "ERROR: bounding box dimensions must be positive" << std::endl;
+				continue;
+			}			
+
+			if(newXsize % SPLV_BRICK_SIZE != 0 || newYsize % SPLV_BRICK_SIZE != 0 || newZsize % SPLV_BRICK_SIZE != 0)
+			{
+				std::cout << "ERROR: bounding box dimensions must be multiples of SPLV_BRICK_SIZE" << std::endl;
 				continue;
 			}
 
@@ -338,24 +363,37 @@ int main(int argc, const char** argv)
 		}
 		else if(command == "a")
 		{
-			std::string newLR, newUD, newFB;
-			if(!(stream >> newLR >> newUD >> newFB))
+			std::string newLRstr, newUDstr, newFBstr;
+			if(!(stream >> newLRstr >> newUDstr >> newFBstr))
 			{
 				std::cout << "ERROR: not enough axes specified for \"a\"" << std::endl;
 				continue;
 			}
 
+			SPLVaxis newLR;
+			SPLVaxis newUD;
+			SPLVaxis newFB;
 			try
 			{
-				lrAxis = parse_axis(newLR);
-				udAxis = parse_axis(newUD);
-				fbAxis = parse_axis(newFB);
+				newLR = parse_axis(newLRstr);
+				newUD = parse_axis(newUDstr);
+				newFB = parse_axis(newFBstr);
 			}
 			catch(std::exception e)
 			{
 				std::cout << "ERROR: invalid axes" << std::endl;
-				return -1;
+				continue;
 			}
+
+			if(newLR == newUD || newLR == newFB || newUD == newFB)
+			{
+				std::cout << "ERROR: axes must be distinct" << std::endl;
+				continue;
+			}
+
+			lrAxis = newLR;
+			udAxis = newUD;
+			fbAxis = newFB;
 		}
 		else if(command == "r")
 		{
@@ -372,13 +410,13 @@ int main(int argc, const char** argv)
 				removeNonvisible = false;
 			else
 			{
-				std::cout << "ERROR: invalud parameter given to \"r\" (expects \"on\" or \"off\")" << std::endl;
+				std::cout << "ERROR: invalid parameter given to \"r\" (expects \"on\" or \"off\")" << std::endl;
 				continue;	
 			}
 		}
 		else if(command == "f")
 		{
-			SPLVerror finishError = splv_encoder_finish(encoder);
+			SPLVerror finishError = splv_encoder_finish(&encoder);
 			if(finishError != SPLV_SUCCESS)
 			{
 				std::cout << "ERROR: failed to finish encoding with code " << 
@@ -390,7 +428,7 @@ int main(int argc, const char** argv)
 		}
 		else if(command == "q")
 		{
-			splv_encoder_abort(encoder);
+			splv_encoder_abort(&encoder);
 
 			free_frames();
 			break;

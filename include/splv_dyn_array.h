@@ -18,13 +18,22 @@
  */
 typedef struct SPLVdynArrayUint64
 {
-	uint64_t len;
 	uint64_t cap;
 	uint64_t* arr;
+
+	uint64_t len;
 } SPLVdynArrayUint64;
+
+//-------------------------------------------//
 
 SPLV_API inline SPLVerror splv_dyn_array_uint64_create(SPLVdynArrayUint64* arr, uint64_t initialCap)
 {
+	if(initialCap == 0)
+	{
+		const uint64_t DEFAULT_INITIAL_CAP = 64;
+		initialCap = DEFAULT_INITIAL_CAP;
+	}
+
 	arr->len = 0;
 	arr->cap = initialCap;
 	arr->arr = (uint64_t*)SPLV_MALLOC(initialCap * sizeof(uint64_t));
@@ -37,10 +46,10 @@ SPLV_API inline SPLVerror splv_dyn_array_uint64_create(SPLVdynArrayUint64* arr, 
 	return SPLV_SUCCESS;
 }
 
-SPLV_API inline void splv_dyn_array_uint64_destroy(SPLVdynArrayUint64 arr)
+SPLV_API inline void splv_dyn_array_uint64_destroy(SPLVdynArrayUint64* arr)
 {
-	if(arr.arr)
-		SPLV_FREE(arr.arr);
+	if(arr->arr)
+		SPLV_FREE(arr->arr);
 }
 
 SPLV_API inline SPLVerror splv_dyn_array_uint64_push(SPLVdynArrayUint64* arr, uint64_t val)

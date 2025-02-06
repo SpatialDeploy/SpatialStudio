@@ -99,7 +99,7 @@ public class SpatialStudio
 	//from splv_frame.h
 
 	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_frame_create(ref IntPtr frame, UInt32 width, UInt32 height, UInt32 depth);
+	public static extern SPLVerror splv_frame_create(IntPtr frame, UInt32 width, UInt32 height, UInt32 depth);
 
 	[DllImport(LibraryName)]
 	public static extern void splv_frame_destroy(IntPtr frame);
@@ -114,13 +114,13 @@ public class SpatialStudio
 	public static extern SPLVerror splv_frame_push_next_brick(IntPtr frame, UInt32 x, UInt32 y, UInt32 z);
 
 	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_frame_remove_nonvisible_voxels(IntPtr frame, ref IntPtr processedFrame);
+	public static extern SPLVerror splv_frame_remove_nonvisible_voxels(IntPtr frame, IntPtr processedFrame);
 
 	//-------------------------------------------//
 	//from splv_encoder.h
 
 	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_encoder_create(ref IntPtr encoder, UInt32 width, UInt32 height, UInt32 depth, float framerate, UInt32 gopSize, IntPtr outPath);
+	public static extern SPLVerror splv_encoder_create(IntPtr encoder, UInt32 width, UInt32 height, UInt32 depth, float framerate, UInt32 gopSize, IntPtr outPath);
 
 	[DllImport(LibraryName)]
 	public static extern SPLVerror splv_encoder_encode_frame(IntPtr encoder, IntPtr frame, out Byte canFree);

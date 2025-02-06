@@ -9,14 +9,6 @@
 
 //-------------------------------------------//
 
-typedef struct SPLVbrickGeomDiff
-{
-	splv_bool_t add;
-	uint8_t x;
-	uint8_t y;
-	uint8_t z;
-} SPLVbrickGeomDiff;
-
 typedef enum SPLVbrickEncodingType
 {
 	SPLV_BRICK_ENCODING_TYPE_I = 0,

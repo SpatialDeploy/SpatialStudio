@@ -298,9 +298,9 @@ SPLVerror splv_vox_load(const char* path, SPLVframe*** outFrames, uint32_t* numO
 
 	//cleanup + return:
 	//---------------
-	splv_dyn_array_uint64_destroy(xyziPtrs);
-	splv_dyn_array_uint64_destroy(modelIndices);
-	splv_dyn_array_uint64_destroy(frameIndices);
+	splv_dyn_array_uint64_destroy(&xyziPtrs);
+	splv_dyn_array_uint64_destroy(&modelIndices);
+	splv_dyn_array_uint64_destroy(&frameIndices);
 
 	fclose(file);
 
@@ -424,11 +424,12 @@ SPLVerror _splv_vox_create_frame(FILE* file, SPLVframe** outFrame, uint64_t xyzi
 	uint32_t heightMap = height / SPLV_BRICK_SIZE;
 	uint32_t depthMap  = depth  / SPLV_BRICK_SIZE;
 
-	SPLVerror frameError = splv_frame_create(outFrame, widthMap, heightMap, depthMap);
+	*outFrame = (SPLVframe*)SPLV_MALLOC(sizeof(SPLVframe));
+	SPLVframe* frame = *outFrame;
+
+	SPLVerror frameError = splv_frame_create(frame, widthMap, heightMap, depthMap);
 	if(frameError != SPLV_SUCCESS)
 		return frameError;
-
-	SPLVframe* frame = *outFrame;
 
 	uint32_t mapLen = widthMap * heightMap * depthMap;
 	for(uint32_t i = 0; i < mapLen; i++)
