@@ -204,7 +204,7 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 	uint32_t depthMap  = sizes[(uint32_t)fbAxis] / SPLV_BRICK_SIZE;
 
 	SPLVframe frame;
-	SPLVerror frameError = splv_frame_create(&frame, widthMap, heightMap, depthMap);
+	SPLVerror frameError = splv_frame_create(&frame, widthMap, heightMap, depthMap, 0);
 	if(frameError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create frame with code " << 

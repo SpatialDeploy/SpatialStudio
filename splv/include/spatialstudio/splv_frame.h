@@ -38,7 +38,7 @@ typedef struct SPLVframe
 /**
  * creates a new frame. DOES NOT CLEAR THE MAP TO BE EMPTY. call splv_frame_destroy() to free
  */
-SPLV_API SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, uint32_t depth);
+SPLV_API SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, uint32_t depth, uint32_t numBricksInitial);
 
 /**
  * frees all resources allocated from splv_frame_create()

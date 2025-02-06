@@ -1,19 +1,10 @@
 #include "spatialstudio/splv_encoder.h"
 
+#define SPLV_RC_IMPLEMENTATION
+#include "splv_range_coder.h"
 #include "splv_morton_lut.h"
 #include "spatialstudio/splv_log.h"
 #include "spatialstudio/splv_buffer_io.h"
-
-#define SPLV_RC_IMPLEMENTATION
-#include "splv_range_coder.h"
-
-//-------------------------------------------//
-
-typedef enum SPLVframeType
-{
-	SPLV_FRAME_TYPE_I = 0,
-	SPLV_FRAME_TYPE_P = 1
-} SPLVframeType;
 
 //-------------------------------------------//
 
@@ -130,11 +121,11 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 
 	//determine frame type:
 	//---------------
-	SPLVframeType frameType;
+	SPLVframeEncodingType frameType;
 	if(encoder->frameCount % encoder->gopSize == 0)
-		frameType = SPLV_FRAME_TYPE_I;
+		frameType = SPLV_FRAME_ENCODING_TYPE_I;
 	else
-		frameType = SPLV_FRAME_TYPE_P;
+		frameType = SPLV_FRAME_ENCODING_TYPE_P;
 
 	//compress map (convert to bitmap):
 	//---------------
@@ -175,17 +166,17 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 
 	for(uint32_t i = 0; i < numBricksOrdered; i++)
 	{
-		if(frameType == SPLV_FRAME_TYPE_P)
+		if(frameType == SPLV_FRAME_ENCODING_TYPE_P)
 		{
 			SPLVcoordinate brickPos = encoder->scratchBufBrickPositions[i];
-			SPLV_ERROR_PROPAGATE(splv_brick_serialize_predictive(encoder->scratchBufBricks[i], 
+			SPLV_ERROR_PROPAGATE(splv_brick_encode_predictive(encoder->scratchBufBricks[i], 
 				brickPos.x, brickPos.y, brickPos.z, 
 				&encoder->frameWriter, &encoder->lastFrame
 			));
 		}
 		else
 		{
-			SPLV_ERROR_PROPAGATE(splv_brick_serialize(
+			SPLV_ERROR_PROPAGATE(splv_brick_encode_intra(
 				encoder->scratchBufBricks[i], 
 				&encoder->frameWriter
 			));

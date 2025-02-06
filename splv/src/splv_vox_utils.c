@@ -427,7 +427,7 @@ SPLVerror _splv_vox_create_frame(FILE* file, SPLVframe** outFrame, uint64_t xyzi
 	*outFrame = (SPLVframe*)SPLV_MALLOC(sizeof(SPLVframe));
 	SPLVframe* frame = *outFrame;
 
-	SPLVerror frameError = splv_frame_create(frame, widthMap, heightMap, depthMap);
+	SPLVerror frameError = splv_frame_create(frame, widthMap, heightMap, depthMap, 0);
 	if(frameError != SPLV_SUCCESS)
 		return frameError;
 

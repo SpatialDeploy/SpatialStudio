@@ -52,7 +52,7 @@ SPLVerror splv_nvdb_load(const char* path, SPLVframe* outFrame, SPLVboundingBox*
 	uint32_t heightMap = height / SPLV_BRICK_SIZE;
 	uint32_t depthMap  = depth  / SPLV_BRICK_SIZE;
 
-	SPLV_ERROR_PROPAGATE(splv_frame_create(outFrame, widthMap, heightMap, depthMap));
+	SPLV_ERROR_PROPAGATE(splv_frame_create(outFrame, widthMap, heightMap, depthMap, 0));
 
 	//generate frame:
 	//---------------

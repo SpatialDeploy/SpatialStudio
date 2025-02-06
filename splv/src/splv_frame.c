@@ -9,7 +9,7 @@ inline uint8_t _splv_frame_get_voxel(SPLVframe* frame, int32_t x, int32_t y, int
 
 //-------------------------------------------//
 
-SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, uint32_t depth)
+SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, uint32_t depth, uint32_t numBricksInitial)
 {
 	//validate params:
 	//---------------
@@ -35,8 +35,15 @@ SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, u
 		return SPLV_ERROR_OUT_OF_MEMORY;
 	}
 
-	const uint32_t BRICK_CAP_INITIAL = 16;
-	frame->bricks = (SPLVbrick*)SPLV_MALLOC(BRICK_CAP_INITIAL * sizeof(SPLVbrick));
+	if(numBricksInitial == 0)
+	{
+		const uint32_t DEFAULT_BRICK_CAP_INITIAL = 16;
+		frame->bricksCap = DEFAULT_BRICK_CAP_INITIAL;
+	}
+	else
+		frame->bricksCap = numBricksInitial + 1;
+
+	frame->bricks = (SPLVbrick*)SPLV_MALLOC(frame->bricksCap * sizeof(SPLVbrick));
 	if(!frame->bricks)
 	{
 		splv_frame_destroy(frame);
@@ -45,8 +52,7 @@ SPLVerror splv_frame_create(SPLVframe* frame, uint32_t width, uint32_t height, u
 		return SPLV_ERROR_OUT_OF_MEMORY;
 	}
 
-	frame->bricksCap = BRICK_CAP_INITIAL;
-	frame->bricksLen = 0;
+	frame->bricksLen = numBricksInitial;
 
 	return SPLV_SUCCESS;
 }
@@ -99,7 +105,7 @@ SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe* proce
 
 	//create new frame:
 	//---------------
-	SPLV_ERROR_PROPAGATE(splv_frame_create(processedFrame, frame->width, frame->height, frame->depth));
+	SPLV_ERROR_PROPAGATE(splv_frame_create(processedFrame, frame->width, frame->height, frame->depth, 0));
 
 	//add visible voxels to new frame:
 	//---------------

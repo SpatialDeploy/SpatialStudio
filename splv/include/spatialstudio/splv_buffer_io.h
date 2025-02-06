@@ -67,6 +67,22 @@ SPLV_API inline SPLVerror splv_buffer_reader_read(SPLVbufferReader* reader, uint
 }
 
 /**
+ * sets the read position for a buffer reader
+ */
+SPLV_API inline SPLVerror splv_buffer_reader_seek(SPLVbufferReader* reader, uint64_t pos)
+{
+	if(pos >= reader->len)
+	{
+		SPLV_LOG_ERROR("trying to seek past end of buffer");
+		return SPLV_ERROR_FILE_READ;
+	}
+
+	reader->readPos = pos;
+	
+	return SPLV_SUCCESS;
+}
+
+/**
  * initalizes a buffer writer, must call splv_buffer_writer_destroy() when finished to free memory
  */
 SPLV_API inline SPLVerror splv_buffer_writer_create(SPLVbufferWriter* writer, uint64_t initialLen)

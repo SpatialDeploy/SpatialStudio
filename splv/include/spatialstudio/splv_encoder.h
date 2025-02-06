@@ -9,6 +9,7 @@
 #include "splv_frame.h"
 #include "splv_global.h"
 #include "splv_dyn_array.h"
+#include "splv_format.h"
 #include <stdio.h>
 
 //-------------------------------------------//
@@ -43,25 +44,6 @@ typedef struct SPLVencoder
 	SPLVbrick** scratchBufBricks;
 	SPLVcoordinate* scratchBufBrickPositions;
 } SPLVencoder;
-
-/**
- * header containing all metadata in an splv file
- */
-typedef struct SPLVfileHeader
-{
-	uint32_t magicWord;
-	uint32_t version;
-
-	uint32_t width;
-	uint32_t height;
-	uint32_t depth;
-
-	float framerate;
-	uint32_t frameCount;
-	float duration;
-	
-	uint64_t frameTablePtr;
-} SPLVfileHeader;
 
 //-------------------------------------------//
 
