@@ -96,6 +96,8 @@ SPLV_API SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uin
 		SPLV_LOG_ERROR("invalid SPLV file - unknown frame encoding type");
 		return SPLV_ERROR_INVALID_INPUT;
 	}
+
+	return SPLV_SUCCESS;
 }
 
 SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx, uint64_t numDependencies, SPLVframeIndexed* dependencies, SPLVframe* frame)
@@ -189,7 +191,7 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	//read total number of bricks:
 	//-----------------	
 	uint32_t numBricks;
-	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&decompressedReader, &numBricks, sizeof(uint32_t)));
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&decompressedReader, sizeof(uint32_t), &numBricks));
 
 	//create frame:
 	//-----------------
