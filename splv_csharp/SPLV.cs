@@ -1,4 +1,4 @@
-/* SpatialStudio.cs
+/* SPLV.cs
  * 
  * contains all bindings from the SpatialStudio C++ library
  */
@@ -73,7 +73,7 @@ public struct SPLVencoder
 
 //-------------------------------------------//
 
-public class SpatialStudio
+public class SPLV
 {
 	private const string LibraryName = "splv_encoder_shared";
 

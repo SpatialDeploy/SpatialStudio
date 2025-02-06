@@ -1,4 +1,4 @@
-/* SpatialStudioExample.cs
+/* SPLVExample.cs
  *
  * contains example code to encode a basic SPlV
  */
@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 using Unity.Collections;
 using UnityEngine;
 
-public class SpatialStudioExample : MonoBehaviour
+public class SPLVExample : MonoBehaviour
 {
 	private const int EXAMPLE_FRAME_SIZE = 16;
 
@@ -25,7 +25,7 @@ public class SpatialStudioExample : MonoBehaviour
 		IntPtr outPath = Marshal.StringToHGlobalAnsi("C:\\Users\\danie\\Downloads\\test.splv");
 
 		IntPtr encoder = Marshal.AllocHGlobal(sizeof(SPLVencoder));
-		SPLVerror encoderError = SpatialStudio.splv_encoder_create(encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, 1, outPath);
+		SPLVerror encoderError = SPLV.splv_encoder_create(encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, 1, outPath);
 		if(encoderError != SPLVerror.SUCCESS)
 			throw new Exception($"Failed to create SPLVencoder: ({encoderError})");
 
@@ -39,14 +39,14 @@ public class SpatialStudioExample : MonoBehaviour
 			activeFrames.Add(frame);
 
 			Byte canFree;
-			SPLVerror encodeError = SpatialStudio.splv_encoder_encode_frame(encoder, frame, out canFree);
+			SPLVerror encodeError = SPLV.splv_encoder_encode_frame(encoder, frame, out canFree);
 			if(encodeError != SPLVerror.SUCCESS)
 				throw new Exception($"Failed to encode frame: ({encodeError})");
 
 			if(canFree != 0)
 			{
 				foreach(var activeFrame in activeFrames)
-					SpatialStudio.splv_frame_destroy(activeFrame);
+					SPLV.splv_frame_destroy(activeFrame);
 
 				activeFrames.Clear();
 			}
@@ -54,12 +54,12 @@ public class SpatialStudioExample : MonoBehaviour
 
 		//finish encoding, free remaining active frames:
 		//---------------
-		SPLVerror finishError = SpatialStudio.splv_encoder_finish(encoder);
+		SPLVerror finishError = SPLV.splv_encoder_finish(encoder);
 		if(finishError != SPLVerror.SUCCESS)
 			throw new Exception($"Failed to finish encoding: ({finishError})");
 
 		foreach(var activeFrame in activeFrames)
-			SpatialStudio.splv_frame_destroy(activeFrame);
+			SPLV.splv_frame_destroy(activeFrame);
 
 		activeFrames.Clear();
 	}
@@ -79,7 +79,7 @@ public class SpatialStudioExample : MonoBehaviour
 		int z = EXAMPLE_FRAME_SIZE / 2;
 		arr[x + EXAMPLE_FRAME_SIZE * (y + EXAMPLE_FRAME_SIZE * z)] = new Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 
-		IntPtr frame = SpatialStudioUtils.NativeArrayToSPLVframe(
+		IntPtr frame = SPLVUtils.NativeArrayToSPLVframe(
 			arr, 
 			EXAMPLE_FRAME_SIZE, 
 			EXAMPLE_FRAME_SIZE,

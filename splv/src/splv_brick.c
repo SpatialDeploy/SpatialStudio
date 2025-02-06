@@ -1,8 +1,8 @@
-#include "splv_brick.h"
+#include "spatialstudio/splv_brick.h"
 
 #include "splv_morton_lut.h"
-#include "splv_frame.h"
-#include "splv_log.h"
+#include "spatialstudio/splv_frame.h"
+#include "spatialstudio/splv_log.h"
 #include <string.h>
 
 #define SPLV_BRICK_GEOM_DIFF_SIZE (1 + 3 * SPLV_BRICK_SIZE_LOG_2)

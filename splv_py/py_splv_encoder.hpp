@@ -6,7 +6,7 @@
 #ifndef PY_ENCODER_H
 #define PY_ENCODER_H
 
-#include "splv_encoder.h"
+#include "spatialstudio/splv_encoder.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <tuple>

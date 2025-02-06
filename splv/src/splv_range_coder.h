@@ -9,8 +9,8 @@
 #define SPLV_RANGE_CODER_H
 
 #include <stdint.h>
-#include "splv_error.h"
-#include "splv_log.h"
+#include "spatialstudio/splv_error.h"
+#include "spatialstudio/splv_log.h"
 
 //----------------------------------------------------------------------//
 //DECLARATIONS:

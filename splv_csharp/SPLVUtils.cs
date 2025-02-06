@@ -1,4 +1,4 @@
-/* SpatialStudioUtils.cs
+/* SPLVUtils.cs
  *
  * contains utility functions for using SpatialStudio with C#
  */
@@ -19,7 +19,7 @@ public enum SPLVaxis : Int32
 
 //-------------------------------------------//
 
-public static class SpatialStudioUtils
+public static class SPLVUtils
 {
 	public static IntPtr NativeArrayToSPLVframe(NativeArray<Vector4> colorData, Int32 xSize, Int32 ySize, Int32 zSize,
 	                                            SPLVaxis lrAxis, SPLVaxis udAxis, SPLVaxis fbAxis)

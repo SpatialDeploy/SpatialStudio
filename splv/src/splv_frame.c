@@ -1,7 +1,7 @@
-#include "splv_frame.h"
+#include "spatialstudio/splv_frame.h"
 
-#include "splv_log.h"
-#include "splv_global.h"
+#include "spatialstudio/splv_log.h"
+#include "spatialstudio/splv_global.h"
 
 //-------------------------------------------//
 

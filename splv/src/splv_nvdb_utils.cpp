@@ -1,8 +1,8 @@
-#include "splv_nvdb_utils.h"
+#include "spatialstudio/splv_nvdb_utils.h"
 
 #define NANOVDB_USE_BLOSC
 #include "nanovdb/util/IO.h"
-#include "splv_log.h"
+#include "spatialstudio/splv_log.h"
 
 //-------------------------------------------//
 

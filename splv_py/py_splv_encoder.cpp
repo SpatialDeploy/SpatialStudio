@@ -1,8 +1,8 @@
 #include "py_splv_encoder.hpp"
 
-#include "splv_vox_utils.h"
-#include "splv_nvdb_utils.h"
-#include "splv_utils.h"
+#include "spatialstudio/splv_vox_utils.h"
+#include "spatialstudio/splv_nvdb_utils.h"
+#include "spatialstudio/splv_utils.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <iostream>

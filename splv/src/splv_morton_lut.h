@@ -8,7 +8,7 @@
 #define SPLV_MORTON_LUT_H
 
 #include <stdint.h>
-#include "splv_brick.h"
+#include "spatialstudio/splv_brick.h"
 
 //-------------------------------------------//
 

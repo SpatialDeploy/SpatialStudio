@@ -1,8 +1,8 @@
-#include "splv_encoder.h"
+#include "spatialstudio/splv_encoder.h"
 
 #include "splv_morton_lut.h"
-#include "splv_log.h"
-#include "splv_buffer_io.h"
+#include "spatialstudio/splv_log.h"
+#include "spatialstudio/splv_buffer_io.h"
 
 #define SPLV_RC_IMPLEMENTATION
 #include "splv_range_coder.h"

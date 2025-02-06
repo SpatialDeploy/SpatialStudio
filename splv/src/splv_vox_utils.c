@@ -1,10 +1,10 @@
-#include "splv_vox_utils.h"
+#include "spatialstudio/splv_vox_utils.h"
 
 #include <string.h>
 #include <stdio.h>
-#include "splv_log.h"
-#include "splv_global.h"
-#include "splv_dyn_array.h"
+#include "spatialstudio/splv_log.h"
+#include "spatialstudio/splv_global.h"
+#include "spatialstudio/splv_dyn_array.h"
 
 //-------------------------------------------//
 

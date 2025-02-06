@@ -1,8 +1,8 @@
-#include "splv_utils.h"
+#include "spatialstudio/splv_utils.h"
 
 #include <math.h>
-#include "splv_log.h"
-#include "splv_encoder.h"
+#include "spatialstudio/splv_log.h"
+#include "spatialstudio/splv_encoder.h"
 
 //-------------------------------------------//
 

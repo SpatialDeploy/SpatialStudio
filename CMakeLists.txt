@@ -37,36 +37,36 @@ endif()
 
 # set source files
 set(splv_src
-    "src/splv_brick.c"
-    "src/splv_encoder.c"
-    "src/splv_frame.c"
-    "src/splv_vox_utils.c"
-    "src/splv_utils.c"
-    "src/splv_nvdb_utils.cpp"
+    "splv/src/splv_brick.c"
+    "splv/src/splv_encoder.c"
+    "splv/src/splv_frame.c"
+    "splv/src/splv_vox_utils.c"
+    "splv/src/splv_utils.c"
+    "splv/src/splv_nvdb_utils.cpp"
 )
 
 # create static library with common code
 add_library(splv_encoder_lib STATIC ${splv_src})
 
-target_include_directories(splv_encoder_lib PUBLIC "include/")
+target_include_directories(splv_encoder_lib PUBLIC "splv/include/")
 target_link_libraries(splv_encoder_lib PUBLIC blosc_static)
 
 # create CLI executable
 if(SPLV_BUILD_CLI)
-    add_executable(splv_encoder_cli "src/cli_splv_encoder.cpp")
+    add_executable(splv_encoder_cli "splv_cli/splv_cli.cpp")
 
     target_link_libraries(splv_encoder_cli PRIVATE splv_encoder_lib)
 endif() 
 
 # add python module
 if(SPLV_BUILD_PYTHON_BINDINGS)
-    pybind11_add_module(splv_encoder_py "src/py_splv_encoder.cpp")
+    pybind11_add_module(splv_encoder_py "splv_py/py_splv_encoder.cpp")
 
     if(WIN32)
         set_target_properties(splv_encoder_py PROPERTIES SUFFIX ".pyd")
     endif()
 
-    target_include_directories(splv_encoder_py PUBLIC "include/" PRIVATE ${pybind11_INCLUDE_DIRS})
+    target_include_directories(splv_encoder_py PRIVATE ${pybind11_INCLUDE_DIRS})
     target_link_libraries(splv_encoder_py PRIVATE 
         splv_encoder_lib
         pybind11::lto
@@ -78,6 +78,5 @@ endif()
 if(SPLV_BUILD_SHARED)
     add_library(splv_encoder_shared SHARED ${splv_src})
 
-    target_include_directories(splv_encoder_shared PUBLIC "include/")
     target_link_libraries(splv_encoder_shared PUBLIC blosc_static)
 endif()
