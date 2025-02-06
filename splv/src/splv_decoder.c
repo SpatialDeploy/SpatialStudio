@@ -1,5 +1,6 @@
 #include "spatialstudio/splv_decoder.h"
 
+#define SPLV_RC_IMPLEMENTATION
 #include "splv_range_coder.h"
 #include "spatialstudio/splv_log.h"
 #include <math.h>
@@ -308,7 +309,7 @@ SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_
 		return frameIdx;
 }
 
-SPLV_API SPLVerror splv_decoder_destroy(SPLVdecoder* decoder)
+SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
 {
 	if(decoder->scratchBufEncodedMap)
 		SPLV_FREE(decoder->scratchBufEncodedMap);

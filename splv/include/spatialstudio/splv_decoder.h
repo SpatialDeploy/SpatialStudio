@@ -91,6 +91,6 @@ SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_
 /**
  * destroys a decoder, freeing any resources allocated from splv_decoder_create_*()
  */
-SPLV_API SPLVerror splv_decoder_destroy(SPLVdecoder* decoder);
+SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder);
 
 #endif //#ifndef SPLV_DECODER_H
