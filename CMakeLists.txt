@@ -42,6 +42,7 @@ set(splv_src
     "splv/src/splv_decoder.c"
     "splv/src/splv_frame.c"
     "splv/src/splv_range_coder.c"
+    "splv/src/splv_buffer_io.c"
     "splv/src/splv_vox_utils.c"
     "splv/src/splv_utils.c"
     "splv/src/splv_nvdb_utils.cpp"

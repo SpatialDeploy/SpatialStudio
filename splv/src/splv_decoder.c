@@ -369,6 +369,8 @@ SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
 	if(decoder->scratchBufBrickPositions)
 		SPLV_FREE(decoder->scratchBufBrickPositions);
 
+	splv_buffer_writer_destroy(&decoder->decodedFrameWriter);
+
 	if(decoder->fromFile)
 	{
 		fclose(decoder->inFile.file);
