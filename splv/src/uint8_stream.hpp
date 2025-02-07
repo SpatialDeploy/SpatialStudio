@@ -15,6 +15,67 @@
 
 //-------------------------//
 
+class Uint8PtrIStream : public std::basic_istream<char> 
+{
+private:
+	class Uint8PtrStreamBuf : public std::streambuf
+	{
+	private:
+		uint8_t* m_buf;
+		char_type* m_begin;
+		char_type* m_end;
+
+	public:
+		explicit Uint8PtrStreamBuf(uint8_t* buf, uint32_t len) :
+			m_buf(buf), m_begin(reinterpret_cast<char_type*>(buf)), m_end(reinterpret_cast<char_type*>(buf + len))
+		{
+			setg(m_begin, m_begin, m_end);
+		}
+
+		virtual pos_type seekoff(off_type off, std::ios_base::seekdir dir, std::ios_base::openmode which = std::ios_base::in) override
+		{
+			if(!(which & std::ios_base::in)) 
+				return pos_type(-1);
+
+			char_type* newPos;
+			switch (dir) 
+			{
+				case std::ios_base::beg:
+					newPos = m_begin + off;
+					break;
+				case std::ios_base::cur:
+					newPos = gptr() + off;
+					break;
+				case std::ios_base::end:
+					newPos = m_end + off;
+					break;
+				default:
+					return pos_type(-1);
+			}
+
+			if(newPos < m_begin || newPos > m_end) 
+				return pos_type(-1);
+
+			setg(m_begin, newPos, m_end);
+			return pos_type(newPos - m_begin);
+		}
+
+		virtual pos_type seekpos(pos_type pos, std::ios_base::openmode which = std::ios_base::in) override
+		{
+			return seekoff(pos, std::ios_base::beg, which);
+		}
+	};
+
+	Uint8PtrStreamBuf m_streambuf;
+
+public:
+	explicit Uint8PtrIStream(uint8_t* buf, uint32_t len) :
+		std::basic_istream<char>(&m_streambuf), m_streambuf(buf, len)
+	{
+
+	}
+};
+
 class Uint8VectorIStream : public std::basic_istream<char> 
 {
 private:

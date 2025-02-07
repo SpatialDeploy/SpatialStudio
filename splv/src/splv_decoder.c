@@ -1,7 +1,6 @@
 #include "spatialstudio/splv_decoder.h"
 
-#define SPLV_RC_IMPLEMENTATION
-#include "splv_range_coder.h"
+#include "spatialstudio/splv_range_coder.h"
 #include "spatialstudio/splv_log.h"
 #include <math.h>
 
@@ -16,39 +15,54 @@ static inline SPLVerror _splv_decoder_seek(SPLVdecoder* decoder, uint64_t pos);
 
 SPLV_API SPLVerror splv_decoder_create_from_mem(SPLVdecoder* decoder, uint64_t encodedBufLen, uint8_t* encodedBuf)
 {
-	//initialize buffer reader:
-	//---------------
-	SPLVbufferReader reader;
-	SPLV_ERROR_PROPAGATE(splv_buffer_reader_create(&reader, encodedBuf, encodedBufLen));
-
-	//create decoder:
+	//initialize:
 	//---------------
 	memset(decoder, 0, sizeof(SPLVdecoder)); //clear any ptrs to NULL
 
 	decoder->fromFile = 0;
-	decoder->inBuf = reader;
 
+	//create buffer reader:
+	//---------------
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_create(&decoder->inBuf, encodedBuf, encodedBufLen));
+
+	//create general decoder:
+	//---------------
 	return _splv_decoder_create(decoder);
 }
 
 SPLV_API SPLVerror splv_decoder_create_from_file(SPLVdecoder* decoder, const char* path)
 {
+	//initialize:
+	//---------------
+	memset(decoder, 0, sizeof(SPLVdecoder)); //clear any ptrs to NULL
+
+	decoder->fromFile = 1;
+
 	//open file:
 	//---------------
-	FILE* file = fopen(path, "rb");
-	if(!file)
+	decoder->inFile.file = fopen(path, "rb");
+	if(!decoder->inFile.file)
 	{
 		SPLV_LOG_ERROR("failed to open input file for decoding");
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
-	//create decoder:
+	//create scratch buffers:
 	//---------------
-	memset(decoder, 0, sizeof(SPLVdecoder));
+	const uint64_t INITIAL_SCRATCH_BUF_LEN = 1024;
+	decoder->inFile.scrathBufLen = INITIAL_SCRATCH_BUF_LEN;
 
-	decoder->fromFile = 1;
-	decoder->inFile = file;
+	decoder->inFile.scratchBuf = (uint8_t*)SPLV_MALLOC(decoder->inFile.scrathBufLen);
+	if(!decoder->inFile.scratchBuf)
+	{
+		fclose(decoder->inFile.file);
 
+		SPLV_LOG_ERROR("failed to allocate decoder file scratch buffer");
+		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
+
+	//create general decoder:
+	//---------------
 	return _splv_decoder_create(decoder);
 }
 
@@ -71,7 +85,7 @@ SPLV_API SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uin
 
 		if(recursive)
 		{
-			int32_t prevIframe = splv_decoder_get_prev_i_frame_idx(decoder, idx);
+			int64_t prevIframe = splv_decoder_get_prev_i_frame_idx(decoder, idx);
 			if(prevIframe < 0)
 			{
 				SPLV_LOG_ERROR("invalid SPLV file - first frame cannot be a p-frame");
@@ -81,7 +95,7 @@ SPLV_API SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uin
 			*numDependencies = idx - prevIframe;
 			if(dependencies)
 			{
-				for(uint32_t i = prevIframe; i < idx; i++)
+				for(uint64_t i = prevIframe; i < idx; i++)
 					dependencies[i - prevIframe] = i;
 			}
 		}
@@ -113,18 +127,64 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	SPLVframeEncodingType encodingType = (SPLVframeEncodingType)(frameTableEntry >> 56);
 	uint64_t framePtr = frameTableEntry & 0x00FFFFFFFFFFFFFF;
 
+	//read compressed frame data:
+	//-----------------
 	uint8_t* compressedFrame;
 	uint64_t compressedFrameLen;
 	if(decoder->fromFile)
 	{
-		//TODO!!!!!!
+		//get ptr to next frame
+		uint64_t nextFramePtr;
+		if(idx == decoder->frameCount - 1)
+		{
+			if(fseek(decoder->inFile.file, 0, SEEK_END) != 0)
+			{
+				SPLV_LOG_ERROR("failed to seek to end of file");
+				return SPLV_ERROR_FILE_READ;
+			}
 
-		SPLV_LOG_ERROR("not yet implemented");
-		return SPLV_ERROR_INTERNAL;
+			long fileSize = ftell(decoder->inFile.file);
+			if(fileSize == -1)
+			{
+				SPLV_LOG_ERROR("failed to get file size");
+				return SPLV_ERROR_FILE_READ;
+			}
+
+			nextFramePtr = fileSize - (decoder->frameCount * sizeof(uint64_t));
+		}
+		else
+		{
+			uint64_t nextFrameTableEntry = decoder->frameTable[idx + 1];
+			nextFramePtr = nextFrameTableEntry & 0x00FFFFFFFFFFFFFF;
+		}
+
+		//potentially resize scratch buffer
+		compressedFrameLen = nextFramePtr - framePtr;
+		if(compressedFrameLen < decoder->inFile.scrathBufLen)
+		{
+			uint64_t newScratchBufLen = decoder->inFile.scrathBufLen;
+			while(compressedFrameLen < newScratchBufLen)
+				newScratchBufLen *= 2;
+
+			uint8_t* newScatchBuf = (uint8_t*)SPLV_MALLOC(newScratchBufLen);
+			if(!newScatchBuf)
+			{
+				SPLV_LOG_ERROR("failed to realloc decoder file scratch buf");
+				return SPLV_ERROR_OUT_OF_MEMORY;
+			}
+
+			decoder->inFile.scratchBuf = newScatchBuf;
+			decoder->inFile.scrathBufLen = newScratchBufLen;
+		}
+
+		//get ptrs to compressed frame
+		SPLV_ERROR_PROPAGATE(_splv_decoder_seek(decoder, framePtr));
+		SPLV_ERROR_PROPAGATE(_splv_decoder_read(decoder, compressedFrameLen, decoder->inFile.scratchBuf));
+		compressedFrame = decoder->inFile.scratchBuf;
 	}
 	else
 	{
-		SPLV_ERROR_PROPAGATE(splv_buffer_reader_seek(&decoder->inBuf, framePtr));
+		SPLV_ERROR_PROPAGATE(_splv_decoder_seek(decoder, framePtr));
 		compressedFrame = decoder->inBuf.buf + decoder->inBuf.readPos;
 		compressedFrameLen = decoder->inBuf.len - decoder->inBuf.readPos;
 	}
@@ -169,10 +229,9 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 
 	//decompress:
 	//-----------------
-	uint8_t* decompressedBuf;
-	uint64_t decompressedSize;
+	splv_buffer_writer_reset(&decoder->decodedFrameWriter);
 
-	SPLVerror decodeError = splv_rc_decode(compressedFrameLen, compressedFrame, &decompressedBuf, &decompressedSize);
+	SPLVerror decodeError = splv_rc_decode(compressedFrameLen, compressedFrame, &decoder->decodedFrameWriter);
 	if(decodeError != SPLV_SUCCESS)
 	{
 		SPLV_LOG_ERROR("error decompressing frame");
@@ -180,11 +239,9 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	}
 
 	SPLVbufferReader decompressedReader;
-	SPLVerror readerError = splv_buffer_reader_create(&decompressedReader, decompressedBuf, decompressedSize);
+	SPLVerror readerError = splv_buffer_reader_create(&decompressedReader, decoder->decodedFrameWriter.buf, decoder->decodedFrameWriter.writePos);
 	if(readerError != SPLV_SUCCESS)
 	{
-		splv_rc_free_output_buf(decompressedBuf);
-
 		SPLV_LOG_ERROR("failed to create decompressed frame reader");
 		return readerError;
 	}
@@ -214,7 +271,6 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	if(readMapError != SPLV_SUCCESS)
 	{
 		splv_frame_destroy(frame);
-		splv_rc_free_output_buf(decompressedBuf);
 
 		SPLV_LOG_ERROR("failed to read encoded map from decompressed stream");
 		return readMapError;
@@ -255,7 +311,6 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		if(brickDecodeError != SPLV_SUCCESS)
 		{
 			splv_frame_destroy(frame);
-			splv_rc_free_output_buf(decompressedBuf);
 
 			SPLV_LOG_ERROR("error while decoding brick");
 			return brickDecodeError;
@@ -264,10 +319,8 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		curBrickIdx++;
 	}
 
-	//cleanup + return:
+	//return:
 	//-----------------
-	splv_rc_free_output_buf(decompressedBuf);
-
 	return SPLV_SUCCESS;
 }
 
@@ -275,7 +328,7 @@ SPLV_API int64_t splv_decoder_get_prev_i_frame_idx(SPLVdecoder* decoder, uint64_
 {
 	SPLV_ASSERT(idx < decoder->frameCount, "out of bounds frame index");
 
-	int32_t frameIdx = idx;
+	int64_t frameIdx = idx;
 	SPLVframeEncodingType encodingType = (SPLVframeEncodingType)(decoder->frameTable[frameIdx] >> 56);
 
 	while(encodingType != SPLV_FRAME_ENCODING_TYPE_I && frameIdx > 0)
@@ -294,10 +347,10 @@ SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_
 {
 	SPLV_ASSERT(idx < decoder->frameCount, "out of bounds frame index");
 
-	int32_t frameIdx = idx;
+	int64_t frameIdx = idx;
 	SPLVframeEncodingType encodingType = (SPLVframeEncodingType)(decoder->frameTable[frameIdx] >> 56);
 
-	while(encodingType != SPLV_FRAME_ENCODING_TYPE_I && frameIdx < decoder->frameCount - 1)
+	while(encodingType != SPLV_FRAME_ENCODING_TYPE_I && frameIdx < (int64_t)decoder->frameCount - 1)
 	{
 		frameIdx++;
 		encodingType = (SPLVframeEncodingType)(decoder->frameTable[frameIdx] >> 56);
@@ -317,7 +370,10 @@ SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
 		SPLV_FREE(decoder->scratchBufBrickPositions);
 
 	if(decoder->fromFile)
-		fclose(decoder->inFile);
+	{
+		fclose(decoder->inFile.file);
+		SPLV_FREE(decoder->inFile.scratchBuf);
+	}
 }
 
 //-------------------------------------------//
@@ -428,6 +484,17 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 		return frameTableReadError;
 	}
 
+	//create decoded frame writer:
+	//-----------------
+	SPLVerror frameWriterError = splv_buffer_writer_create(&decoder->decodedFrameWriter, 0);
+	if(frameWriterError != SPLV_SUCCESS)
+	{
+		splv_decoder_destroy(decoder);
+
+		SPLV_LOG_ERROR("failed to create decoded frame writer");
+		return frameWriterError;	
+	}
+
 	//preallocate space for compressed map + brick positions:
 	//-----------------
 	uint32_t mapWidth  = decoder->width  / SPLV_BRICK_SIZE;
@@ -460,7 +527,7 @@ static inline SPLVerror _splv_decoder_read(SPLVdecoder* decoder, uint64_t size, 
 {
 	if(decoder->fromFile)
 	{
-		if(fread(dst, size, 1, decoder->inFile) < 1)
+		if(fread(dst, size, 1, decoder->inFile.file) < 1)
 		{
 			SPLV_LOG_ERROR("failed to read from file");
 			return SPLV_ERROR_FILE_READ;
@@ -479,7 +546,7 @@ static inline SPLVerror _splv_decoder_seek(SPLVdecoder* decoder, uint64_t pos)
 {
 	if(decoder->fromFile)
 	{
-		if(fseek(decoder->inFile, pos, SEEK_SET) != 0)
+		if(fseek(decoder->inFile.file, (long)pos, SEEK_SET) != 0)
 		{
 			SPLV_LOG_ERROR("failed to seek in file");
 			return SPLV_ERROR_FILE_READ;

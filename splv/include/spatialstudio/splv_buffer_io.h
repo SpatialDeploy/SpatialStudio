@@ -143,6 +143,28 @@ SPLV_API inline SPLVerror splv_buffer_writer_write(SPLVbufferWriter* writer, uin
 	return SPLV_SUCCESS;
 }
 
+SPLV_API inline SPLVerror splv_buffer_writer_put(SPLVbufferWriter* writer, uint8_t c)
+{
+	if(writer->writePos + 1 > writer->len)
+	{
+		uint64_t newLen = writer->len * 2;
+		uint8_t* newBuf = (uint8_t*)SPLV_REALLOC(writer->buf, newLen);
+		if(!newBuf)
+		{
+			SPLV_LOG_ERROR("failed to realloc buffer to write to");
+			return SPLV_ERROR_OUT_OF_MEMORY;
+		}
+
+		writer->buf = newBuf;
+		writer->len = newLen;
+	}
+
+	writer->buf[writer->writePos] = c;
+	writer->writePos++;
+
+	return SPLV_SUCCESS;
+}
+
 SPLV_API inline void splv_buffer_writer_reset(SPLVbufferWriter* writer)
 {
 	writer->writePos = 0;

@@ -9,6 +9,7 @@
 #include "splv_frame.h"
 #include "splv_global.h"
 #include "splv_format.h"
+#include "splv_buffer_io.h"
 
 //-------------------------------------------//
 
@@ -31,8 +32,16 @@ typedef struct SPLVdecoder
 	union
 	{
 		SPLVbufferReader inBuf;
-		FILE* inFile;
+		struct
+		{
+			FILE* file;
+
+			uint64_t scrathBufLen;
+			uint8_t* scratchBuf;
+		} inFile;
 	};
+
+	SPLVbufferWriter decodedFrameWriter;
 
 	uint64_t encodedMapLen;
 	uint32_t* scratchBufEncodedMap;

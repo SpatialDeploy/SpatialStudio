@@ -1,9 +1,9 @@
 #include "spatialstudio/splv_encoder.h"
 
-#include "splv_range_coder.h"
-#include "splv_morton_lut.h"
+#include "spatialstudio/splv_range_coder.h"
 #include "spatialstudio/splv_log.h"
 #include "spatialstudio/splv_buffer_io.h"
+#include "splv_morton_lut.h"
 
 //-------------------------------------------//
 
@@ -34,6 +34,7 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 	encoder->frameTable = (SPLVdynArrayUint64){0};
 	encoder->gopSize = gopSize;
 	encoder->frameWriter = (SPLVbufferWriter){0};
+	encoder->encodedFrameWriter = (SPLVbufferWriter){0};
 
 	//create frame table:
 	//---------------
@@ -57,7 +58,7 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
-	//create frame writer:
+	//create frame writers:
 	//---------------
 	SPLVerror frameWriterError = splv_buffer_writer_create(&encoder->frameWriter, 0);
 	if(frameWriterError != SPLV_SUCCESS)
@@ -65,6 +66,15 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 		_splv_encoder_destroy(encoder);
 
 		SPLV_LOG_ERROR("failed to create buffer writer for frame data");
+		return frameWriterError;
+	}
+
+	SPLVerror encodedFrameWriterError = splv_buffer_writer_create(&encoder->encodedFrameWriter, 0);
+	if(encodedFrameWriterError != SPLV_SUCCESS)
+	{
+		_splv_encoder_destroy(encoder);
+
+		SPLV_LOG_ERROR("failed to create buffer writer for encoded frame data");
 		return frameWriterError;
 	}
 
@@ -196,29 +206,24 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 
 	//entropy code frame:
 	//---------------
-	uint8_t* encodedBuf;
-	uint64_t encodedSize;
+	splv_buffer_writer_reset(&encoder->encodedFrameWriter);
 
 	SPLV_ERROR_PROPAGATE(splv_rc_encode(
 		encoder->frameWriter.writePos, 
 		encoder->frameWriter.buf, 
-		&encodedBuf, &encodedSize
+		&encoder->encodedFrameWriter
 	));
 
 	//write encoded frame to output file:
 	//---------------
-	if(fwrite(encodedBuf, encodedSize, 1, encoder->outFile) < 1)
+	if(fwrite(encoder->encodedFrameWriter.buf, encoder->encodedFrameWriter.writePos, 1, encoder->outFile) < 1)
 	{
-		splv_rc_free_output_buf(encodedBuf);
-
 		SPLV_LOG_ERROR("failed to write encoded frame");
 		return SPLV_ERROR_FILE_WRITE;
 	}
 
 	//cleanup + return:
 	//---------------
-	splv_rc_free_output_buf(encodedBuf);
-
 	encoder->frameCount++;
 	encoder->lastFrame = *frame;
 
@@ -301,6 +306,7 @@ static void _splv_encoder_destroy(SPLVencoder* encoder)
 		SPLV_FREE(encoder->scratchBufBrickPositions);
 
 	splv_buffer_writer_destroy(&encoder->frameWriter);
+	splv_buffer_writer_destroy(&encoder->encodedFrameWriter);
 
 	if(encoder->outFile)
 		fclose(encoder->outFile);

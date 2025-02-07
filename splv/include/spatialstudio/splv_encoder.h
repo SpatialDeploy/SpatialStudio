@@ -14,11 +14,6 @@
 
 //-------------------------------------------//
 
-#define SPLV_MAGIC_WORD (('s' << 24) | ('p' << 16) | ('l' << 8) | ('v'))
-#define SPLV_VERSION ((0 << 24) | (0 << 16) | (1 << 8) | 0)
-
-//-------------------------------------------//
-
 /**
  * all state needed by an encoder
  */
@@ -38,6 +33,7 @@ typedef struct SPLVencoder
 	FILE* outFile;
 
 	SPLVbufferWriter frameWriter;
+	SPLVbufferWriter encodedFrameWriter;
 
 	uint64_t mapBitmapLen;
 	uint32_t* scratchBufMapBitmap;
