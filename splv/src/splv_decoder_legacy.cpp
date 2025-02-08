@@ -162,10 +162,10 @@ SPLV_API SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, 
 
 		//potentially resize scratch buffer
 		compressedFrameLen = nextFramePtr - framePtr;
-		if(compressedFrameLen < decoder->inFile.scrathBufLen)
+		if(compressedFrameLen > decoder->inFile.scrathBufLen)
 		{
 			uint64_t newScratchBufLen = decoder->inFile.scrathBufLen;
-			while(compressedFrameLen < newScratchBufLen)
+			while(compressedFrameLen > newScratchBufLen)
 				newScratchBufLen *= 2;
 
 			uint8_t* newScatchBuf = (uint8_t*)SPLV_MALLOC(newScratchBufLen);

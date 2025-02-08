@@ -55,7 +55,8 @@ private:
 
 std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path);
 
-void concat(const py::list& paths, const std::string& outPath);
-uint32_t split(const std::string& path, float splitLength, const std::string& outDir);
+void concat(const py::list& paths, const std::string& outPath, uint32_t gopSize);
+uint32_t split(const std::string& path, float splitLength, const std::string& outDir, uint32_t gopSize);
+void upgrade(const std::string& path, const std::string& outPath, uint32_t gopSize);
 
 #endif //#ifndef PY_ENCODER_H

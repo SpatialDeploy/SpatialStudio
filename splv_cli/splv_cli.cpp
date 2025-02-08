@@ -5,7 +5,6 @@
 #include "spatialstudio/splv_encoder.h"
 #include "spatialstudio/splv_vox_utils.h"
 #include "spatialstudio/splv_nvdb_utils.h"
-#include "spatialstudio/splv_utils.h"
 
 //-------------------------------------------//
 

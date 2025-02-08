@@ -111,12 +111,8 @@ SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const
 		if(fabsf(decoder.impl.framerate - framerate) > 0.1f)
 			SPLV_LOG_WARNING("framerate mismatch for concatenated spatials");
 
-		printf("here\n");
-
 		for(uint32_t j = 0; j < decoder.impl.frameCount; j++) 
 		{
-			//printf("%d\n", j);
-
 			SPLVframeRef* frame;
 			
 			SPLVerror decodeError = _splv_decoder_sequential_decode(&decoder, &frame);
@@ -268,8 +264,6 @@ SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, uint
 	//---------------
 	for(uint32_t i = 0; i < decoder.implLegacy.frameCount; i++) 
 	{
-		printf("%d/%d", i, decoder.implLegacy.frameCount);
-
 		SPLVframeRef* frame;
 
 		SPLVerror decodeError = _splv_decoder_sequential_decode(&decoder, &frame);

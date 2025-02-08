@@ -414,7 +414,7 @@ std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path
 	return std::make_tuple(xSize, ySize, zSize);
 }
 
-void concat(const py::list& paths, const std::string& outPath)
+void concat(const py::list& paths, const std::string& outPath, uint32_t gopSize)
 {
     std::vector<std::string> stdPaths;
     std::vector<const char*> cPaths;
@@ -427,7 +427,7 @@ void concat(const py::list& paths, const std::string& outPath)
         cPaths.push_back(stdPaths.back().c_str());
 	}
 
-	SPLVerror error = splv_file_concat((uint32_t)cPaths.size(), cPaths.data(), outPath.c_str());
+	SPLVerror error = splv_file_concat((uint32_t)cPaths.size(), cPaths.data(), outPath.c_str(), gopSize);
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to concatenate splv files with code " <<
@@ -436,10 +436,10 @@ void concat(const py::list& paths, const std::string& outPath)
 	}
 }
 
-uint32_t split(const std::string& path, float splitLength, const std::string& outDir)
+uint32_t split(const std::string& path, float splitLength, const std::string& outDir, uint32_t gopSize)
 {
     uint32_t numSplits = 0;
-    SPLVerror error = splv_file_split(path.c_str(), splitLength, outDir.c_str(), &numSplits);
+    SPLVerror error = splv_file_split(path.c_str(), splitLength, outDir.c_str(), gopSize, &numSplits);
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to split splv file with code " <<
@@ -448,6 +448,17 @@ uint32_t split(const std::string& path, float splitLength, const std::string& ou
 	}
 
     return numSplits;
+}
+
+void upgrade(const std::string& path, const std::string& outPath, uint32_t gopSize)
+{
+    SPLVerror error = splv_file_upgrade(path.c_str(), outPath.c_str(), gopSize);
+	if(error != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to upgrade splv file with code " <<
+			error << " (" << splv_get_error_string(error) << ")\n";
+		throw std::runtime_error("");
+	}
 }
 
 //-------------------------------------------//
@@ -513,11 +524,19 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 	m.def("concat", &concat,
 		py::arg("paths"),
 		py::arg("outPath"),
+		py::arg("gopSize"),
 		"Concatenates multiple SPLV files togethers");
 
 	m.def("split", &split,
 		py::arg("path"),
 		py::arg("splitLength"),
 		py::arg("outDir"),
+		py::arg("gopSize"),
 		"Splits an SPLV file into multiple files of the specified duration");
+
+	m.def("upgrade", &upgrade,
+		py::arg("path"),
+		py::arg("outPath"),
+		py::arg("gopSize"),
+		"Upgrades an SPLV file from the previous version to the current one");
 }
