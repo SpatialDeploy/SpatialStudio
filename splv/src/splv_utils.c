@@ -3,496 +3,642 @@
 #include <math.h>
 #include "spatialstudio/splv_log.h"
 #include "spatialstudio/splv_encoder.h"
+#include "spatialstudio/splv_decoder.h"
+#include "spatialstudio/splv_decoder_legacy.h"
 
 //-------------------------------------------//
 
-//TODO: these functions DO NOT WORK. rewrite them when we have the decoder in this repo
-
-SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* outPath)
+typedef struct SPLVframeRef
 {
-	//validate params:
+	SPLVframe frame;
+	uint64_t idx;
+
+	uint32_t refCount;
+} SPLVframeRef;
+
+typedef struct SPLVencoderSequential
+{
+	SPLVencoder impl;
+
+	uint64_t maxFrameRefs;
+	uint64_t numFrameRefs;
+	SPLVframeRef** frameRefs;
+} SPLVencoderSequential;
+
+typedef struct SPLVdecoderSequential
+{
+	uint8_t legacy;
+	struct
+	{
+		SPLVdecoder impl;
+		SPLVdecoderLegacy implLegacy;
+	};
+
+	uint64_t curFrame;
+
+	uint64_t maxFrameRefs;
+	uint64_t numFrameRefs;
+	SPLVframeRef** frameRefs;
+} SPLVdecoderSequential;
+
+//-------------------------------------------//
+
+static void _splv_frame_ref_add(SPLVframeRef* ref);
+static void _splv_frame_ref_remove(SPLVframeRef* ref);
+
+static SPLVerror _splv_encoder_sequential_create(SPLVencoderSequential* encoder, uint32_t width, uint32_t height, uint32_t depth, 
+                                                 float framerate, uint32_t gopSize, const char* outPath);
+static SPLVerror _splv_encoder_sequential_finish(SPLVencoderSequential* encoder);
+static void _splv_encoder_sequential_abort(SPLVencoderSequential* encoder);
+static SPLVerror _splv_encoder_sequential_encode_frame(SPLVencoderSequential* encoder, SPLVframeRef* frame);
+
+static SPLVerror _splv_decoder_sequential_create(SPLVdecoderSequential* decoder, const char* path);
+static SPLVerror _splv_decoder_sequential_create_legacy(SPLVdecoderSequential* decoder, const char* path);
+static void _splv_decoder_sequential_destroy(SPLVdecoderSequential* decoder);
+static SPLVerror _splv_decoder_sequential_decode(SPLVdecoderSequential* decoder, SPLVframeRef** frame);
+
+//-------------------------------------------//
+
+SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* outPath, uint32_t gopSize) 
+{
+	//validate:
 	//---------------
-	if(numPaths == 0)
-	{
-		SPLV_LOG_ERROR("cannot concatenate 0 videos");
-		return SPLV_ERROR_INVALID_ARGUMENTS;
-	}
+	SPLV_ASSERT(numPaths > 0, "no input paths specified");
 
-	//read first video metadata:
+	//open first file to get metadata:
 	//---------------
-	FILE* firstFile = fopen(paths[0], "rb");
-	if(!firstFile)
-	{
-		SPLV_LOG_ERROR("failed to open input file for concatenation");
-		return SPLV_ERROR_FILE_OPEN;
-	}
+	SPLVdecoder firstDecoder;
+	SPLVerror firstDecoderError = splv_decoder_create_from_file(&firstDecoder, paths[0]);
+	if(firstDecoderError != SPLV_SUCCESS) 
+		return firstDecoderError;
 
-	//no need to validate, will be validated when reading first in file in loop
-	SPLVfileHeader firstHeader;
-	if(fread(&firstHeader, sizeof(SPLVfileHeader), 1, firstFile) < 1)
-	{
-		SPLV_LOG_ERROR("failed to read header from input file");
-		return SPLV_ERROR_FILE_READ;
-	}
+	uint32_t width = firstDecoder.width;
+	uint32_t height = firstDecoder.height;
+	uint32_t depth = firstDecoder.depth;
+	float framerate = firstDecoder.framerate;
 
-	fclose(firstFile);
+	splv_decoder_destroy(&firstDecoder);
 
-	//open output file:
+	//create output encoder:
 	//---------------
-	FILE* outFile = fopen(outPath, "wb");
-	if(!outFile)
-	{
-		SPLV_LOG_ERROR("failed to open output file for concatenation");
-		return SPLV_ERROR_FILE_OPEN;
-	}
+	SPLVencoderSequential encoder;
+	SPLVerror encoderError = _splv_encoder_sequential_create(&encoder, width, height, depth, framerate, gopSize, outPath);
+	if(encoderError != SPLV_SUCCESS)
+		return encoderError;
 
-	SPLVfileHeader outHeader = {0};
-	fwrite(&outHeader, sizeof(SPLVfileHeader), 1, outFile);
-
-	//create frame table + scratch buf:
+	//process files:
 	//---------------
-	uint64_t frameCount = 0;
-
-	const uint64_t FRAME_PTR_INITIAL_CAP = 64;
-	uint64_t framePtrCap = FRAME_PTR_INITIAL_CAP;
-	uint64_t* framePtrs = (uint64_t*)SPLV_MALLOC(framePtrCap * sizeof(uint64_t));
-	if(!framePtrs)
+	for(uint32_t i = 0; i < numPaths; i++) 
 	{
-		fclose(outFile);
-		
-		SPLV_LOG_ERROR("failed to create frame ptr array");
-		return SPLV_ERROR_OUT_OF_MEMORY;
-	}
-
-	const uint64_t SCRATCH_BUF_INITIAL_SIZE = 1000000; //1MB
-	uint64_t scratchBufSize = SCRATCH_BUF_INITIAL_SIZE;
-	uint8_t* scratchBuf = (uint8_t*)SPLV_MALLOC(scratchBufSize);
-	if(!scratchBuf)
-	{
-		fclose(outFile);
-
-		SPLV_LOG_ERROR("failed to create scratch buffer");
-		return SPLV_ERROR_OUT_OF_MEMORY;
-	}
-
-	//read each file, concatenate:
-	//---------------
-	long writePos = ftell(outFile);
-	if(writePos == -1L)
-	{
-		fclose(outFile);
-
-		SPLV_LOG_ERROR("failed to get write position of output file");
-		return SPLV_ERROR_FILE_WRITE;
-	}
-
-	for(uint32_t i = 0; i < numPaths; i++)
-	{
-		//open file
-		FILE* inFile = fopen(paths[i], "rb");
-		if(!inFile)
+		SPLVdecoderSequential decoder;
+		SPLVerror decoderError = _splv_decoder_sequential_create(&decoder, paths[i]);
+		if(decoderError != SPLV_SUCCESS)
 		{
-			fclose(outFile);
+			_splv_encoder_sequential_abort(&encoder);
 
-			SPLV_LOG_ERROR("failed to open input file for concatenation");
-			return SPLV_ERROR_FILE_OPEN;
+			return decoderError;
 		}
 
-		//read header + validate
-		SPLVfileHeader inHeader;
-		if(fread(&inHeader, sizeof(SPLVfileHeader), 1, inFile) < 1)
+		if(decoder.impl.width != width || decoder.impl.height != height || decoder.impl.depth != depth) 
 		{
-			fclose(inFile);
-			fclose(outFile);
+			_splv_decoder_sequential_destroy(&decoder);
+			_splv_encoder_sequential_abort(&encoder);
 
-			SPLV_LOG_ERROR("failed to read header from input file");
-			return SPLV_ERROR_FILE_READ;
-		}
-
-		if(inHeader.magicWord != SPLV_MAGIC_WORD || inHeader.version != SPLV_VERSION)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("invalid input SPLV, mismatched magic word or version");
+			SPLV_LOG_ERROR("input files have mismaatched dimensions");
 			return SPLV_ERROR_INVALID_INPUT;
 		}
 
-		if(inHeader.width != firstHeader.width || inHeader.height != firstHeader.height || inHeader.depth != firstHeader.depth)
+		if(fabsf(decoder.impl.framerate - framerate) > 0.1f)
+			SPLV_LOG_WARNING("framerate mismatch for concatenated spatials");
+
+		printf("here\n");
+
+		for(uint32_t j = 0; j < decoder.impl.frameCount; j++) 
 		{
-			fclose(inFile);
-			fclose(outFile);
+			//printf("%d\n", j);
 
-			SPLV_LOG_ERROR("attempting to concatenate spatials with mismatched dimensions");
-			return SPLV_ERROR_INVALID_INPUT;
-		}
-
-		if(fabsf(inHeader.framerate - firstHeader.framerate) > 0.01f)
-			SPLV_LOG_WARNING("attempting to concatenate spatials with mismatched framerates, taking framerate of earlier spatial...");
-
-		//copy frames
-		if(fseek(inFile, 0, SEEK_END) != 0)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("failed to seek to end of input file");
-			return SPLV_ERROR_FILE_READ;
-		}
-
-		long totalSize = ftell(inFile);
-		if(totalSize == -1L)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("failed to get total size of input file");
-			return SPLV_ERROR_FILE_READ;
-		}
-
-		if(fseek(inFile, sizeof(SPLVfileHeader), SEEK_SET) != 0)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("failed to seek in input file");
-			return SPLV_ERROR_FILE_READ;
-		}
-
-		uint64_t frameTableSize = inHeader.frameCount * sizeof(uint64_t);
-		uint64_t framesSize = totalSize - sizeof(SPLVfileHeader) - frameTableSize;
-
-		if(scratchBufSize < framesSize)
-		{
-			while(scratchBufSize < framesSize)
-				scratchBufSize *= 2;
+			SPLVframeRef* frame;
 			
-			scratchBuf = (uint8_t*)SPLV_REALLOC(scratchBuf, scratchBufSize);
-			if(!scratchBuf)
+			SPLVerror decodeError = _splv_decoder_sequential_decode(&decoder, &frame);
+			if(decodeError != SPLV_SUCCESS) 
 			{
-				fclose(inFile);
-				fclose(outFile);
+				_splv_decoder_sequential_destroy(&decoder);
+				_splv_encoder_sequential_abort(&encoder);
 
-				SPLV_LOG_ERROR("failed to realloc scratch buffer for concatenation");
-				return SPLV_ERROR_OUT_OF_MEMORY;
+				return decodeError;
+			}
+
+			SPLVerror encodeError = _splv_encoder_sequential_encode_frame(&encoder, frame);
+			if(encodeError != SPLV_SUCCESS) 
+			{
+				_splv_decoder_sequential_destroy(&decoder);
+				_splv_encoder_sequential_abort(&encoder);
+
+				return encodeError;
 			}
 		}
 
-		if(fread(scratchBuf, 1, framesSize, inFile) < framesSize)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("failed to read frames from input file");
-			return SPLV_ERROR_FILE_READ;
-		}
-
-		if(fwrite(scratchBuf, 1, framesSize, outFile) < framesSize)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("failed to write frames to output file");
-			return SPLV_ERROR_FILE_WRITE;
-		}
-
-		//copy frame table
-		if(framePtrCap < frameCount + inHeader.frameCount)
-		{
-			while(framePtrCap < frameCount + inHeader.frameCount)
-				framePtrCap *= 2;
-
-			framePtrs = (uint64_t*)SPLV_REALLOC(framePtrs, framePtrCap * sizeof(uint64_t));
-			if(!framePtrs)
-			{
-				fclose(inFile);
-				fclose(outFile);
-
-				SPLV_LOG_ERROR("failed to realloc frame ptr buffer for concatenation");
-				return SPLV_ERROR_OUT_OF_MEMORY;
-			}
-		}
-
-		if(fread(&framePtrs[frameCount], sizeof(uint64_t), inHeader.frameCount, inFile) < inHeader.frameCount)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("failed to read frame table from input file");
-			return SPLV_ERROR_FILE_READ;
-		}
-
-		for(uint64_t j = frameCount; j < frameCount + inHeader.frameCount; j++)
-			framePtrs[j] += writePos - sizeof(SPLVfileHeader);
-
-		frameCount += inHeader.frameCount;
-
-		//close file
-		writePos = ftell(outFile);
-		if(writePos == -1L)
-		{
-			fclose(inFile);
-			fclose(outFile);
-
-			SPLV_LOG_ERROR("failed to get write position of output file");
-			return SPLV_ERROR_FILE_WRITE;
-		}
-		fclose(inFile);
+		_splv_decoder_sequential_destroy(&decoder);
 	}
 
-	//write frame table:
+	//finish encoding:
 	//---------------
-	uint64_t frameTablePtr = ftell(outFile);
-	if(frameTablePtr == -1L)
-	{
-		fclose(outFile);
-
-		SPLV_LOG_ERROR("failed to get frame table position");
-		return SPLV_ERROR_FILE_WRITE;
-	}
-
-	if(fwrite(framePtrs, sizeof(uint64_t), frameCount, outFile) < frameCount)
-	{
-		fclose(outFile);
-
-		SPLV_LOG_ERROR("failed to write frame table");
-		return SPLV_ERROR_FILE_WRITE;
-	}
-
-	//write header:
-	//---------------
-	outHeader.magicWord = SPLV_MAGIC_WORD;
-	outHeader.version = SPLV_VERSION;
-	outHeader.width = firstHeader.width;
-	outHeader.height = firstHeader.height;
-	outHeader.depth = firstHeader.depth;
-	outHeader.framerate = firstHeader.framerate;
-	outHeader.frameCount = (uint32_t)frameCount;
-	outHeader.duration = (float)frameCount / firstHeader.framerate;
-	outHeader.frameTablePtr = frameTablePtr;
-
-	if(fseek(outFile, 0, SEEK_SET) != 0)
-	{
-		fclose(outFile);
-
-		SPLV_LOG_ERROR("failed to seek to beginning of output file");
-		return SPLV_ERROR_FILE_WRITE;
-	}
-
-	if(fwrite(&outHeader, sizeof(SPLVfileHeader), 1, outFile) < 1)
-	{
-		fclose(outFile);
-
-		SPLV_LOG_ERROR("failed to write header to output file");
-		return SPLV_ERROR_FILE_WRITE;
-	}
-
-	//cleanup:
-	//---------------
-	fclose(outFile);
-
-	SPLV_FREE(scratchBuf);
-	SPLV_FREE(framePtrs);
+	SPLVerror finishError = _splv_encoder_sequential_finish(&encoder);
+	if(finishError != SPLV_SUCCESS)
+		return finishError;
 
 	return SPLV_SUCCESS;
 }
 
-SPLVerror splv_file_split(const char* path, float splitLength, const char* outDir, uint32_t* numSplits)
+SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const char* outDir, uint32_t gopSize, uint32_t* numSplits) 
 {
-	//validate params:
+	//validate:
 	//---------------
-	if(splitLength <= 0.0f)
-	{
-		SPLV_LOG_ERROR("cannot split a spatial into non-positive time chunks");
-		return SPLV_ERROR_INVALID_ARGUMENTS;
-	}
+	SPLV_ASSERT(splitLength > 0.0f, "split length must be positive");
 
-	//open input file, read metadata, validate:
+	//open input decoder:
 	//---------------
-	FILE* inFile = fopen(path, "rb");
-	if(!inFile)
-	{
-		SPLV_LOG_ERROR("failed to open input file for splitting");
-		return SPLV_ERROR_FILE_OPEN;
-	}
-
-	SPLVfileHeader inHeader;
-	if(fread(&inHeader, sizeof(SPLVfileHeader), 1, inFile) < 1)
-	{
-		fclose(inFile);
-	
-		SPLV_LOG_ERROR("failed to read header from input file");
-		return SPLV_ERROR_FILE_READ;
-	}
-
-	if(inHeader.magicWord != SPLV_MAGIC_WORD || inHeader.version != SPLV_VERSION)
-	{
-		fclose(inFile);
-
-		SPLV_LOG_ERROR("invalid input SPLV, mismatched magic word or version");
-		return SPLV_ERROR_INVALID_INPUT;
-	}
+	SPLVdecoderSequential decoder;
+	SPLVerror decoderError = _splv_decoder_sequential_create(&decoder, path);
+	if(decoderError != SPLV_SUCCESS)
+		return decoderError;
 
 	//calculate frames per split:
 	//---------------
-	uint32_t framesPerSplit = (uint32_t)(splitLength * inHeader.framerate);
-	if(framesPerSplit == 0)
+	uint32_t framesPerSplit = (uint32_t)(splitLength * decoder.impl.framerate);
+	if(framesPerSplit == 0) 
 	{
-		fclose(inFile);
-
-		SPLV_LOG_ERROR("split length too small, would result in 0 frames per split");
-		return SPLV_ERROR_INVALID_ARGUMENTS;
+		_splv_decoder_sequential_destroy(&decoder);
+	
+		SPLV_LOG_ERROR("split length too small, would lead to 0 frames per split");
+		return SPLV_ERROR_INVALID_INPUT;
 	}
 
-	*numSplits = (inHeader.frameCount + framesPerSplit - 1) / framesPerSplit;
+	*numSplits = (decoder.impl.frameCount + framesPerSplit - 1) / framesPerSplit;
 
-	//read frame table:
+	//process each split:
 	//---------------
-	uint64_t* framePtrs = (uint64_t*)SPLV_MALLOC((inHeader.frameCount + 1) * sizeof(uint64_t));
-	if(!framePtrs)
+	for(uint32_t splitIdx = 0; splitIdx < *numSplits; splitIdx++) 
 	{
-		fclose(inFile);
+		char outPath[1024];
+		snprintf(outPath, sizeof(outPath), "%s/split_%04d.splv", outDir, splitIdx);
 
-		SPLV_LOG_ERROR("failed to allocate frame pointer array");
-		return SPLV_ERROR_OUT_OF_MEMORY;
-	}
+		SPLVencoderSequential encoder;
+		SPLVerror encoderError = _splv_encoder_sequential_create(
+			&encoder,
+			decoder.impl.width, decoder.impl.height, decoder.impl.depth,
+			decoder.impl.framerate, gopSize,
+			outPath
+		);
 
-	fseek(inFile, (long)inHeader.frameTablePtr, SEEK_SET);
-	fread(framePtrs, inHeader.frameCount * sizeof(uint64_t), 1, inFile);
-
-	fseek(inFile, 0, SEEK_END);
-	long fileEnd = ftell(inFile);
-	framePtrs[inHeader.frameCount] = (uint64_t)fileEnd;
-
-	//create scratch buffer:
-	//---------------
-	const uint64_t SCRATCH_BUF_INITIAL_SIZE = 1000000; //1MB
-	uint64_t scratchBufSize = SCRATCH_BUF_INITIAL_SIZE;
-	uint8_t* scratchBuf = (uint8_t*)SPLV_MALLOC(scratchBufSize);
-	if(!scratchBuf)
-	{
-		fclose(inFile);
-
-		SPLV_LOG_ERROR("failed to create scratch buffer");
-		return SPLV_ERROR_OUT_OF_MEMORY;
-	}
-
-	//create splits:
-	//---------------
-	for(uint32_t i = 0; i < *numSplits; i++)
-	{
-		//get frame range
-		uint32_t startFrame = i * framesPerSplit;
-		uint32_t endFrame;
-		if(i == *numSplits - 1)
-			endFrame = inHeader.frameCount;
-		else
-			endFrame = (startFrame + framesPerSplit) < inHeader.frameCount ? (startFrame + framesPerSplit) : inHeader.frameCount;
-
-		uint32_t splitFrameCount = endFrame - startFrame;
-
-		//open out file
-		char outPath[512];
-		snprintf(outPath, sizeof(outPath), "%s/split_%d.splv", outDir, i);
-
-		FILE* outFile = fopen(outPath, "wb");
-		if(!outFile)
+		if(encoderError != SPLV_SUCCESS) 
 		{
-			fclose(inFile);
+			_splv_decoder_sequential_destroy(&decoder);
 
-			SPLV_LOG_ERROR("failed to open output file for split");
-			return SPLV_ERROR_FILE_OPEN;
+			return encoderError;
 		}
 
-		//get size of frame data + frame table, resize scratch buf if needed
-		uint64_t frameDataSize = framePtrs[endFrame] - framePtrs[startFrame];
-		uint64_t frameTableSize = splitFrameCount * sizeof(uint64_t);
+		uint32_t startFrame = splitIdx * framesPerSplit;
+		uint32_t endFrame = startFrame + framesPerSplit;
+		if(endFrame > decoder.impl.frameCount)
+			endFrame = decoder.impl.frameCount;
 
-		if(scratchBufSize < frameDataSize || scratchBufSize < frameTableSize)
+		for(uint32_t frameIdx = startFrame; frameIdx < endFrame; frameIdx++) 
 		{
-			while(scratchBufSize < frameDataSize || scratchBufSize < frameTableSize)
-				scratchBufSize *= 2;
+			SPLVframeRef* frame;
 
-			uint8_t* newBuf = (uint8_t*)SPLV_REALLOC(scratchBuf, scratchBufSize);
-			if(!newBuf)
+			SPLVerror decodeError = _splv_decoder_sequential_decode(&decoder, &frame);
+			if(decodeError != SPLV_SUCCESS) 
 			{
-				fclose(outFile);
-				fclose(inFile);
+				_splv_encoder_sequential_abort(&encoder);
+				_splv_decoder_sequential_destroy(&decoder);
 
-				SPLV_LOG_ERROR("failed to realloc scratch buffer for splitting");
-				return SPLV_ERROR_OUT_OF_MEMORY;
+				return decodeError;
 			}
 
-			scratchBuf = newBuf;
+			SPLVerror encodeError = _splv_encoder_sequential_encode_frame(&encoder, frame);
+			if(encodeError != SPLV_SUCCESS) 
+			{
+				_splv_encoder_sequential_abort(&encoder);
+				_splv_decoder_sequential_destroy(&decoder);
+
+				return encodeError;
+			}
 		}
 
-		//write header
-		SPLVfileHeader splitHeader;
-		splitHeader.magicWord = SPLV_MAGIC_WORD;
-		splitHeader.version = SPLV_VERSION;
-		splitHeader.width = inHeader.width;
-		splitHeader.height = inHeader.height;
-		splitHeader.depth = inHeader.depth;
-		splitHeader.framerate = inHeader.framerate;
-		splitHeader.frameCount = splitFrameCount;
-		splitHeader.duration = (float)splitFrameCount / inHeader.framerate;
-		splitHeader.frameTablePtr = sizeof(SPLVfileHeader) + frameDataSize;
-
-		//writr frame data
-		fwrite(&splitHeader, sizeof(SPLVfileHeader), 1, outFile);
-
-		fseek(inFile, (long)framePtrs[startFrame], SEEK_SET);
-		fread(scratchBuf, frameDataSize, 1, inFile);
-
-		fwrite(scratchBuf, frameDataSize, 1, outFile);
-
-		//update + write frame table
-		fseek(inFile, (long)(inHeader.frameTablePtr + startFrame * sizeof(uint64_t)), SEEK_SET);
-
-		fread(scratchBuf, sizeof(uint64_t), splitFrameCount, inFile);
-
-		uint64_t firstPtr = *((uint64_t*)scratchBuf);
-		for(uint32_t j = 0; j < splitFrameCount; j++)
-			((uint64_t*)scratchBuf)[j] -= firstPtr - sizeof(SPLVfileHeader);
-
-		fwrite(scratchBuf, sizeof(uint64_t), splitFrameCount, outFile);
-
-		//ensure no errors reading/writing
-		if(feof(outFile) || ferror(outFile))
+		SPLVerror finishError = _splv_encoder_sequential_finish(&encoder);
+		if(finishError != SPLV_SUCCESS)
 		{
-			fclose(outFile);
-			fclose(inFile);
+			_splv_decoder_sequential_destroy(&decoder);
 
-			SPLV_LOG_ERROR("error writing to split file");
-			return SPLV_ERROR_FILE_WRITE;
-		}
-
-		if((i != *numSplits -1 && feof(inFile)) || ferror(inFile))
-		{
-			fclose(outFile);
-			fclose(inFile);
-
-			SPLV_LOG_ERROR("error reading file to split");
-			return SPLV_ERROR_FILE_WRITE;
-		}
-
-		//close out file
-		if(fclose(outFile) != 0)
-		{
-			fclose(outFile);
-			fclose(inFile);
-
-			SPLV_LOG_ERROR("error closing split file");
-			return SPLV_ERROR_FILE_WRITE;
+			return finishError;
 		}
 	}
 
-	//cleanup:
+	//cleanup + return:
 	//---------------
-	SPLV_FREE(scratchBuf);
-	SPLV_FREE(framePtrs);
+	_splv_decoder_sequential_destroy(&decoder);
 
-	fclose(inFile);
+	return SPLV_SUCCESS;
+}
+
+SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, uint32_t gopSize)
+{
+	//create decoder + encoder:
+	//---------------
+	SPLVdecoderSequential decoder;
+	SPLVerror decoderError = _splv_decoder_sequential_create_legacy(&decoder, path);
+	if(decoderError != SPLV_SUCCESS)
+		return decoderError;
+
+	SPLVencoderSequential encoder;
+	SPLVerror encoderError = _splv_encoder_sequential_create(
+		&encoder,
+		decoder.implLegacy.width, decoder.implLegacy.height, decoder.implLegacy.depth,
+		decoder.implLegacy.framerate, gopSize, //TODO: store GOP size in file, right now we're potentially reecoding with different params
+		outPath
+	);
+	if(encoderError != SPLV_SUCCESS) 
+	{
+		_splv_decoder_sequential_destroy(&decoder);
+		return encoderError;
+	}
+
+	//reencode frames:
+	//---------------
+	for(uint32_t i = 0; i < decoder.implLegacy.frameCount; i++) 
+	{
+		printf("%d/%d", i, decoder.implLegacy.frameCount);
+
+		SPLVframeRef* frame;
+
+		SPLVerror decodeError = _splv_decoder_sequential_decode(&decoder, &frame);
+		if(decodeError != SPLV_SUCCESS) 
+		{
+			_splv_decoder_sequential_destroy(&decoder);
+			_splv_encoder_sequential_abort(&encoder);
+			return decodeError;
+		}
+
+		SPLVerror encodeError = _splv_encoder_sequential_encode_frame(&encoder, frame);
+		if(encodeError != SPLV_SUCCESS) 
+		{
+			_splv_decoder_sequential_destroy(&decoder);
+			_splv_encoder_sequential_abort(&encoder);
+			return encodeError;
+		}
+	}
+
+	//finish encoding:
+	//---------------
+	SPLVerror finishError = _splv_encoder_sequential_finish(&encoder);
+	if(finishError != SPLV_SUCCESS)
+		return finishError;
+
+	//cleanup + return:
+	//---------------
+	_splv_decoder_sequential_destroy(&decoder);
+
+	return SPLV_SUCCESS;
+}
+
+//-------------------------------------------//
+
+static void _splv_frame_ref_add(SPLVframeRef* ref) 
+{
+	ref->refCount++;
+}
+
+static void _splv_frame_ref_remove(SPLVframeRef* ref) 
+{
+	ref->refCount--;
+	if (ref->refCount == 0) 
+	{
+		splv_frame_destroy(&ref->frame);
+		SPLV_FREE(ref);
+	}
+}
+
+static SPLVerror _splv_encoder_sequential_create(SPLVencoderSequential* encoder, uint32_t width, uint32_t height, uint32_t depth, 
+                                                 float framerate, uint32_t gopSize, const char* outPath) 
+{
+	SPLV_ERROR_PROPAGATE(splv_encoder_create(&encoder->impl, width, height, depth, framerate, gopSize, outPath));
+
+	encoder->numFrameRefs = 0;
+	encoder->maxFrameRefs = 0;
+	encoder->frameRefs = NULL;
+
+	return SPLV_SUCCESS;
+}
+
+static SPLVerror _splv_encoder_sequential_finish(SPLVencoderSequential* encoder)
+{
+	if(encoder->frameRefs != NULL)
+	{
+		for (uint64_t i = 0; i < encoder->numFrameRefs; i++)
+			_splv_frame_ref_remove(encoder->frameRefs[i]);
+
+		SPLV_FREE(encoder->frameRefs);
+	}
+
+	return splv_encoder_finish(&encoder->impl);
+}
+
+static void _splv_encoder_sequential_abort(SPLVencoderSequential* encoder)
+{
+	if(encoder->frameRefs != NULL)
+	{
+		for (uint64_t i = 0; i < encoder->numFrameRefs; i++)
+			_splv_frame_ref_remove(encoder->frameRefs[i]);
+
+		SPLV_FREE(encoder->frameRefs);
+	}
+
+	splv_encoder_abort(&encoder->impl);
+}
+
+static SPLVerror _splv_encoder_sequential_encode_frame(SPLVencoderSequential* encoder, SPLVframeRef* frameRef)
+{
+	//encode:
+	//---------------
+	splv_bool_t canFree;
+	SPLV_ERROR_PROPAGATE(splv_encoder_encode_frame(&encoder->impl, &frameRef->frame, &canFree));
+
+	//add frame to refs:
+	//---------------
+	uint64_t newNumRefs = encoder->numFrameRefs + 1;
+	if(encoder->maxFrameRefs < newNumRefs)
+	{
+		SPLVframeRef** newRefs;
+		if(encoder->frameRefs == NULL)
+			newRefs = (SPLVframeRef**)SPLV_MALLOC(newNumRefs * sizeof(SPLVframeRef*));
+		else
+			newRefs = (SPLVframeRef**)SPLV_REALLOC(encoder->frameRefs, newNumRefs * sizeof(SPLVframeRef*));
+
+		if(!newRefs)
+		{
+			SPLV_LOG_ERROR("failed to realloc frame ref buffer");
+			return SPLV_ERROR_OUT_OF_MEMORY;
+		}
+
+		encoder->maxFrameRefs = newNumRefs;
+		encoder->frameRefs = newRefs;
+	}
+
+	_splv_frame_ref_add(frameRef);
+	encoder->frameRefs[encoder->numFrameRefs] = frameRef;
+	encoder->numFrameRefs++;
+
+	//free if able:
+	//---------------
+	if(canFree) 
+	{
+		for(uint64_t i = 0; i < encoder->numFrameRefs; i++)
+			_splv_frame_ref_remove(encoder->frameRefs[i]);
+		
+		encoder->numFrameRefs = 0;
+	}
+
+	return SPLV_SUCCESS;
+}
+
+static SPLVerror _splv_decoder_sequential_create(SPLVdecoderSequential* decoder, const char* path)
+{
+	SPLV_ERROR_PROPAGATE(splv_decoder_create_from_file(&decoder->impl, path));
+
+	decoder->legacy = 0;
+	decoder->curFrame = 0;
+	decoder->numFrameRefs = 0;
+	decoder->maxFrameRefs = 0;
+	decoder->frameRefs = NULL;
+
+	return SPLV_SUCCESS;
+}
+
+static SPLVerror _splv_decoder_sequential_create_legacy(SPLVdecoderSequential* decoder, const char* path) 
+{
+	SPLV_ERROR_PROPAGATE(splv_decoder_legacy_create_from_file(&decoder->implLegacy, path));
+
+	decoder->legacy = 1;
+	decoder->curFrame = 0;
+	decoder->numFrameRefs = 0;
+	decoder->maxFrameRefs = 0;
+	decoder->frameRefs = NULL;
+
+	return SPLV_SUCCESS;
+}
+
+static void _splv_decoder_sequential_destroy(SPLVdecoderSequential* decoder) 
+{
+ 	if(decoder->frameRefs != NULL)
+	{
+		for(uint64_t i = 0; i < decoder->numFrameRefs; i++)
+			_splv_frame_ref_remove(decoder->frameRefs[i]);
+
+		SPLV_FREE(decoder->frameRefs);
+	}
+
+	if(decoder->legacy)
+		splv_decoder_legacy_destroy(&decoder->implLegacy);
+	else	
+		splv_decoder_destroy(&decoder->impl);
+}
+
+static SPLVerror _splv_decoder_sequential_decode(SPLVdecoderSequential* decoder, SPLVframeRef** frame) 
+{
+	//get num dependencies:
+	//---------------
+	SPLVerror dependencyError;
+	uint64_t numDependencies;
+
+	if(decoder->legacy) 
+	{
+		dependencyError = splv_decoder_legacy_get_frame_dependencies(
+			&decoder->implLegacy, decoder->curFrame,
+			&numDependencies, NULL, 0
+		);
+	} 
+	else 
+	{
+		dependencyError = splv_decoder_get_frame_dependencies(
+			&decoder->impl, decoder->curFrame,
+			&numDependencies, NULL, 0
+		);
+	}
+
+	if(dependencyError != SPLV_SUCCESS) 
+	{
+		SPLV_LOG_ERROR("error getting frame dependency count");
+		return dependencyError;
+	}
+
+	//get dependencies:
+	//---------------
+	uint64_t* dependencies = (uint64_t*)SPLV_MALLOC(numDependencies * sizeof(uint64_t));
+	if(!dependencies && numDependencies > 0) 
+	{
+		SPLV_LOG_ERROR("error getting frame dependencies");
+		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
+
+	if(decoder->legacy) 
+	{
+		dependencyError = splv_decoder_legacy_get_frame_dependencies(
+			&decoder->implLegacy, decoder->curFrame,
+			&numDependencies, dependencies, 0
+		);
+	} 
+	else 
+	{
+		dependencyError = splv_decoder_get_frame_dependencies(
+			&decoder->impl, decoder->curFrame,
+			&numDependencies, dependencies, 0
+		);
+	}
+
+	if(dependencyError != SPLV_SUCCESS) 
+	{
+		SPLV_FREE(dependencies);
+		
+		SPLV_LOG_ERROR("error getting frame dependencies count");
+		return dependencyError;
+	}
+
+	//prepare dependency frames:
+	//---------------
+	SPLVframeIndexed* indexedFrames = (SPLVframeIndexed*)SPLV_MALLOC(numDependencies * sizeof(SPLVframeIndexed));
+	if(!indexedFrames && numDependencies > 0) 
+	{
+		SPLV_FREE(dependencies);
+		
+		SPLV_LOG_ERROR("failed to allocate denendency frames array");
+		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
+
+	for(uint64_t i = 0; i < numDependencies; i++) 
+	{
+		uint64_t depIdx = dependencies[i];
+		SPLVframeRef* ref = NULL;
+		
+		for(uint64_t j = 0; j < decoder->numFrameRefs; j++) 
+		{
+			if(decoder->frameRefs[j]->idx == depIdx) 
+			{
+				ref = decoder->frameRefs[j];
+				break;
+			}
+		}
+
+		if(!ref)
+			SPLV_ASSERT(0, "decoderSequential expects frames to be decodable in-order, this may change in the future though");	
+
+		indexedFrames[i].index = depIdx;
+		indexedFrames[i].frame = &ref->frame;
+	}
+
+	//decode:
+	//---------------
+	SPLVerror decodeError;
+	SPLVframe decodedFrame;
+
+	if(decoder->legacy) 
+	{
+		decodeError = splv_decoder_legacy_decode_frame(
+			&decoder->implLegacy, decoder->curFrame,
+			numDependencies, (SPLVframeIndexedLegacy*)indexedFrames, &decodedFrame
+		);
+	}
+	else
+	{
+		decodeError = splv_decoder_decode_frame(
+			&decoder->impl, decoder->curFrame,
+			numDependencies, indexedFrames, &decodedFrame
+		);
+	}
+	
+	if(decodeError != SPLV_SUCCESS)
+	{
+		SPLV_FREE(dependencies);
+		SPLV_FREE(indexedFrames);
+
+		return decodeError;
+	}
+
+	//remove refs that are no longer needed:
+	//---------------
+	if(decoder->frameRefs != NULL)
+	{
+		for(uint32_t i = 0; i < decoder->numFrameRefs; i++)
+		{
+			uint8_t found = 0;
+			for(uint32_t j = 0; j < numDependencies; j++)
+			{
+				if(decoder->frameRefs[i]->idx == dependencies[j])
+				{
+					found = 1;
+					break;
+				}
+			}
+
+			if(!found)
+			{
+				_splv_frame_ref_remove(decoder->frameRefs[i]);
+				decoder->frameRefs[i] = decoder->frameRefs[decoder->numFrameRefs - 1];
+				
+				decoder->numFrameRefs--;
+				i--;
+			}
+		}
+	}
+
+	//create new ref + add:
+	//---------------
+	*frame = (SPLVframeRef*)SPLV_MALLOC(sizeof(SPLVframeRef));
+	if(!*frame)
+	{
+		SPLV_FREE(dependencies);
+		SPLV_FREE(indexedFrames);
+
+		SPLV_LOG_ERROR("failed to alloc frame ref");
+		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
+
+	(*frame)->refCount = 0;
+	(*frame)->idx = decoder->curFrame;
+	(*frame)->frame = decodedFrame;
+
+	uint64_t newNumRefs = decoder->numFrameRefs + 1;
+	if(decoder->maxFrameRefs < newNumRefs)
+	{
+		SPLVframeRef** newRefs;
+		if(decoder->frameRefs == NULL)
+			newRefs = (SPLVframeRef**)SPLV_MALLOC(newNumRefs * sizeof(SPLVframeRef*));
+		else
+			newRefs = (SPLVframeRef**)SPLV_REALLOC(decoder->frameRefs, newNumRefs * sizeof(SPLVframeRef*));
+
+		if(!newRefs)
+		{
+			SPLV_FREE(dependencies);
+			SPLV_FREE(indexedFrames);
+
+			SPLV_LOG_ERROR("failed to realloc frame ref buffer");
+			return SPLV_ERROR_OUT_OF_MEMORY;
+		}
+
+		decoder->maxFrameRefs = newNumRefs;
+		decoder->frameRefs = newRefs;
+	}
+
+	_splv_frame_ref_add(*frame);
+	decoder->frameRefs[decoder->numFrameRefs] = *frame;
+	decoder->numFrameRefs++;
+
+	//cleanup + return:
+	//---------------
+	decoder->curFrame++;
+
+	SPLV_FREE(dependencies);
+	SPLV_FREE(indexedFrames);
 
 	return SPLV_SUCCESS;
 }

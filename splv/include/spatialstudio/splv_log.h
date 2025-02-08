@@ -15,6 +15,7 @@
 #define SPLV_LOG_ERROR(msg) printf("SPLV ERROR: %s\n", msg)
 #define SPLV_LOG_WARNING(msg) printf("SPLV WARNING: %s\n", msg)
 
+#define SPLV_DEBUG
 #ifdef SPLV_DEBUG
 	#define SPLV_ASSERT(c,m) if(!(c)) { printf("SPLV ASSERTION FAIL: %s\n", m); exit(-1); }
 #else

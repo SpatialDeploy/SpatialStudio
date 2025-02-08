@@ -46,6 +46,7 @@ set(splv_src
     "splv/src/splv_vox_utils.c"
     "splv/src/splv_utils.c"
     "splv/src/splv_nvdb_utils.cpp"
+    "splv/src/splv_decoder_legacy.cpp"
 )
 
 # create static library with common code

@@ -17,7 +17,7 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 	//---------------
 	SPLV_ASSERT(width > 0 && height > 0 && depth > 0, 
 		"volume dimensions must be positive");
-	SPLV_ASSERT(width % SPLV_BRICK_SIZE == 0 && height % SPLV_BRICK_SIZE == 0 && depth == SPLV_BRICK_SIZE > 0, 
+	SPLV_ASSERT(width % SPLV_BRICK_SIZE == 0 && height % SPLV_BRICK_SIZE == 0 && depth == SPLV_BRICK_SIZE == 0, 
 		"volume dimensions must be a multiple of SPLV_BRICK_SIZE");
 	SPLV_ASSERT(framerate > 0.0f, "framerate must be positive");
 	SPLV_ASSERT(gopSize > 0, "gop size must be positive");
