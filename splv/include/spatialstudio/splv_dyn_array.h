@@ -26,7 +26,7 @@ typedef struct SPLVdynArrayUint64
 
 //-------------------------------------------//
 
-SPLV_API inline SPLVerror splv_dyn_array_uint64_create(SPLVdynArrayUint64* arr, uint64_t initialCap)
+inline SPLVerror splv_dyn_array_uint64_create(SPLVdynArrayUint64* arr, uint64_t initialCap)
 {
 	if(initialCap == 0)
 	{
@@ -46,13 +46,13 @@ SPLV_API inline SPLVerror splv_dyn_array_uint64_create(SPLVdynArrayUint64* arr, 
 	return SPLV_SUCCESS;
 }
 
-SPLV_API inline void splv_dyn_array_uint64_destroy(SPLVdynArrayUint64* arr)
+inline void splv_dyn_array_uint64_destroy(SPLVdynArrayUint64* arr)
 {
 	if(arr->arr)
 		SPLV_FREE(arr->arr);
 }
 
-SPLV_API inline SPLVerror splv_dyn_array_uint64_push(SPLVdynArrayUint64* arr, uint64_t val)
+inline SPLVerror splv_dyn_array_uint64_push(SPLVdynArrayUint64* arr, uint64_t val)
 {
 	arr->arr[arr->len] = val;
 	arr->len++;
