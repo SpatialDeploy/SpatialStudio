@@ -40,7 +40,7 @@ typedef struct SPLVbufferWriter
 /**
  * initializes a buffer reader
  */
-SPLVerror splv_buffer_reader_create(SPLVbufferReader* reader, uint8_t* buf, uint64_t len);
+SPLV_API SPLVerror splv_buffer_reader_create(SPLVbufferReader* reader, uint8_t* buf, uint64_t len);
 
 /**
  * reads from a buffer reader
@@ -80,7 +80,7 @@ inline SPLVerror splv_buffer_reader_seek(SPLVbufferReader* reader, uint64_t pos)
 /**
  * initalizes a buffer writer, must call splv_buffer_writer_destroy() when finished to free memory
  */
-SPLVerror splv_buffer_writer_create(SPLVbufferWriter* writer, uint64_t initialLen);
+SPLV_API SPLVerror splv_buffer_writer_create(SPLVbufferWriter* writer, uint64_t initialLen);
 
 /**
  * destroys a buffer writer, frees resources allocated from splv_buffer_writer_create()
