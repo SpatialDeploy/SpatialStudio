@@ -98,18 +98,18 @@ SPLV_API void splv_brick_clear(SPLVbrick* brick);
 /**
  * encodes a brick to the given buffer writer, using only intra-frame encoding
  */
-SPLV_API SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out);
+SPLV_NOMANGLE SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out);
 
 typedef struct SPLVframe SPLVframe;
 
 /**
  * encodes a brick into the given buffer writer, using information from the previous frame to predict
  */
-SPLV_API SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame);
+SPLV_NOMANGLE SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame);
 
 /**
  * decodes a brick from an input reader into the given pointer
  */
-SPLV_API SPLVerror splv_brick_decode(SPLVbufferReader* in, SPLVbrick* out, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame);
+SPLV_NOMANGLE SPLVerror splv_brick_decode(SPLVbufferReader* in, SPLVbrick* out, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame);
 
 #endif //#ifndef SPLV_BRICK_H
