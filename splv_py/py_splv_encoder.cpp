@@ -10,7 +10,8 @@
 
 //-------------------------------------------//
 
-PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, std::string outPath)
+PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, 
+                             uint32_t gopSize, uint32_t maxBrickGroupSize, std::string outPath)
 {
 	//validate:
 	//---------------
@@ -40,7 +41,11 @@ PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, fl
 
 	//create encoder:
 	//---------------
-	SPLVerror encoderError = splv_encoder_create(&m_encoder, width, height, depth, framerate, gopSize, outPath.c_str());
+	SPLVencodingParams encodingParams = {0};
+	encodingParams.gopSize = gopSize;
+	encodingParams.maxBrickGroupSize = maxBrickGroupSize;
+
+	SPLVerror encoderError = splv_encoder_create(&m_encoder, width, height, depth, framerate, encodingParams, outPath.c_str());
 	if(encoderError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create SPLVencoder with code " <<
@@ -414,7 +419,7 @@ std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path
 	return std::make_tuple(xSize, ySize, zSize);
 }
 
-void concat(const py::list& paths, const std::string& outPath, uint32_t gopSize)
+void concat(const py::list& paths, const std::string& outPath)
 {
     std::vector<std::string> stdPaths;
     std::vector<const char*> cPaths;
@@ -427,7 +432,7 @@ void concat(const py::list& paths, const std::string& outPath, uint32_t gopSize)
         cPaths.push_back(stdPaths.back().c_str());
 	}
 
-	SPLVerror error = splv_file_concat((uint32_t)cPaths.size(), cPaths.data(), outPath.c_str(), gopSize);
+	SPLVerror error = splv_file_concat((uint32_t)cPaths.size(), cPaths.data(), outPath.c_str());
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to concatenate splv files with code " <<
@@ -436,10 +441,10 @@ void concat(const py::list& paths, const std::string& outPath, uint32_t gopSize)
 	}
 }
 
-uint32_t split(const std::string& path, float splitLength, const std::string& outDir, uint32_t gopSize)
+uint32_t split(const std::string& path, float splitLength, const std::string& outDir)
 {
     uint32_t numSplits = 0;
-    SPLVerror error = splv_file_split(path.c_str(), splitLength, outDir.c_str(), gopSize, &numSplits);
+    SPLVerror error = splv_file_split(path.c_str(), splitLength, outDir.c_str(), &numSplits);
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to split splv file with code " <<
@@ -450,9 +455,13 @@ uint32_t split(const std::string& path, float splitLength, const std::string& ou
     return numSplits;
 }
 
-void upgrade(const std::string& path, const std::string& outPath, uint32_t gopSize)
+void upgrade(const std::string& path, const std::string& outPath, uint32_t gopSize, uint32_t maxBrickGroupSize)
 {
-    SPLVerror error = splv_file_upgrade(path.c_str(), outPath.c_str(), gopSize);
+	SPLVencodingParams encodingParams = {0};
+	encodingParams.gopSize = gopSize;
+	encodingParams.maxBrickGroupSize = maxBrickGroupSize;
+
+    SPLVerror error = splv_file_upgrade(path.c_str(), outPath.c_str(), encodingParams);
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to upgrade splv file with code " <<
@@ -467,12 +476,13 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 	m.doc() = "SPLV Encoder";
 
 	py::class_<PySPLVencoder>(m, "SPLVencoder")
-		.def(py::init<uint32_t, uint32_t, uint32_t, float, uint32_t, const std::string&>(),
+		.def(py::init<uint32_t, uint32_t, uint32_t, float, uint32_t, uint32_t, const std::string&>(),
 			py::arg("width"),
 			py::arg("height"),
 			py::arg("depth"),
 			py::arg("framerate"),
 			py::arg("gopSize"),
+			py::arg("maxBrickGroupSize"),
 			py::arg("outputPath"),
 			"Create a new SPLVencoder instance")
 		.def("encode_nvdb_frame", &PySPLVencoder::encode_nvdb_frame,
@@ -524,19 +534,18 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 	m.def("concat", &concat,
 		py::arg("paths"),
 		py::arg("outPath"),
-		py::arg("gopSize"),
 		"Concatenates multiple SPLV files togethers");
 
 	m.def("split", &split,
 		py::arg("path"),
 		py::arg("splitLength"),
 		py::arg("outDir"),
-		py::arg("gopSize"),
 		"Splits an SPLV file into multiple files of the specified duration");
 
 	m.def("upgrade", &upgrade,
 		py::arg("path"),
 		py::arg("outPath"),
 		py::arg("gopSize"),
+		py::arg("maxBrickGroupSize"),
 		"Upgrades an SPLV file from the previous version to the current one");
 }

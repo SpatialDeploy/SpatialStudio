@@ -27,18 +27,17 @@ typedef struct SPLVencoder
 	uint32_t frameCount;
 	SPLVdynArrayUint64 frameTable;
 
-	uint32_t gopSize;
+	SPLVencodingParams encodingParams;
+
 	SPLVframe lastFrame;
 
 	FILE* outFile;
-
-	SPLVbufferWriter frameWriter;
-	SPLVbufferWriter encodedFrameWriter;
 
 	uint64_t mapBitmapLen;
 	uint32_t* scratchBufMapBitmap;
 	SPLVbrick** scratchBufBricks;
 	SPLVcoordinate* scratchBufBrickPositions;
+	SPLVbufferWriter* scratchBufBrickGroupWriters;
 } SPLVencoder;
 
 //-------------------------------------------//
@@ -46,7 +45,7 @@ typedef struct SPLVencoder
 /**
  * creates a new encoder, call splv_encoder_finish() or splv_encoder_abort() to free any resources
  */
-SPLV_API SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, const char* outPath);
+SPLV_API SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t height, uint32_t depth, float framerate, SPLVencodingParams encodingParams, const char* outPath);
 
 /**
  * encodes a frame to the end of the encoded stream. You MUST keep any encoded frames in memory until

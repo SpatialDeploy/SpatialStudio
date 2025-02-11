@@ -8,6 +8,9 @@
 
 static SPLVerror _splv_decoder_create(SPLVdecoder* decoder);
 
+static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVframe* outFrame, uint64_t compressedBufLen, uint8_t* compressedBuf, 
+	                                              uint32_t brickStartIdx, uint32_t numBricks, SPLVframe* lastFrame);
+
 static inline SPLVerror _splv_decoder_read(SPLVdecoder* decoder, uint64_t size, void* dst);
 static inline SPLVerror _splv_decoder_seek(SPLVdecoder* decoder, uint64_t pos);
 
@@ -227,29 +230,13 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		return SPLV_ERROR_RUNTIME;
 	}
 
-	//decompress:
+	//create compressed reader, read num bricks:
 	//-----------------
-	splv_buffer_writer_reset(&decoder->decodedFrameWriter);
+	SPLVbufferReader compressedReader;
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_create(&compressedReader, compressedFrame, compressedFrameLen));
 
-	SPLVerror decodeError = splv_rc_decode(compressedFrameLen, compressedFrame, &decoder->decodedFrameWriter);
-	if(decodeError != SPLV_SUCCESS)
-	{
-		SPLV_LOG_ERROR("error decompressing frame");
-		return decodeError;
-	}
-
-	SPLVbufferReader decompressedReader;
-	SPLVerror readerError = splv_buffer_reader_create(&decompressedReader, decoder->decodedFrameWriter.buf, decoder->decodedFrameWriter.writePos);
-	if(readerError != SPLV_SUCCESS)
-	{
-		SPLV_LOG_ERROR("failed to create decompressed frame reader");
-		return readerError;
-	}
-
-	//read total number of bricks:
-	//-----------------	
 	uint32_t numBricks;
-	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&decompressedReader, sizeof(uint32_t), &numBricks));
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&compressedReader, sizeof(uint32_t), &numBricks));
 
 	//create frame:
 	//-----------------
@@ -267,7 +254,10 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 
 	//read compressed map, generate full map:
 	//-----------------	
-	SPLVerror readMapError = splv_buffer_reader_read(&decompressedReader, decoder->encodedMapLen * sizeof(uint32_t), decoder->scratchBufEncodedMap);
+	SPLVerror readMapError = splv_buffer_reader_read(
+		&compressedReader, 
+		decoder->encodedMapLen * sizeof(uint32_t), decoder->scratchBufEncodedMap
+	);
 	if(readMapError != SPLV_SUCCESS)
 	{
 		splv_frame_destroy(frame);
@@ -294,29 +284,59 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 			frame->map[idx] = SPLV_BRICK_IDX_EMPTY;
 	}
 
-	//read each brick:
-	//-----------------	
-	curBrickIdx = 0;
-	for(uint32_t i = 0; i < numBricks; i++)
+	//sanity check
+	if(curBrickIdx != numBricks)
 	{
-		SPLVerror brickDecodeError = splv_brick_decode(
-			&decompressedReader, 
-			&frame->bricks[curBrickIdx], 
-			decoder->scratchBufBrickPositions[i].x, 
-			decoder->scratchBufBrickPositions[i].y,
-			decoder->scratchBufBrickPositions[i].z, 
-			lastFrame
-		);
+		splv_frame_destroy(frame);
 
-		if(brickDecodeError != SPLV_SUCCESS)
+		SPLV_LOG_ERROR("invalid SPLV file - given number of bricks did not match contents of map");
+		return SPLV_ERROR_INVALID_INPUT;
+	}
+
+	//decode each brick group:
+	//-----------------
+	uint32_t maxBrickGroupSize;
+	if(decoder->encodingParams.maxBrickGroupSize == 0)
+		maxBrickGroupSize = max(numBricks, 1);
+	else
+		maxBrickGroupSize = decoder->encodingParams.maxBrickGroupSize;
+
+	uint32_t numBrickGroups = (numBricks + maxBrickGroupSize - 1) / maxBrickGroupSize;
+	uint32_t baseBrickGroupSize      = numBricks / max(numBrickGroups, 1);
+	uint32_t brickGroupSizeRemainder = numBricks % max(numBrickGroups, 1);
+
+	uint8_t* brickGroupsStart = compressedReader.buf + compressedReader.readPos + numBrickGroups * sizeof(uint64_t);
+	uint64_t brickGroupsLen   = compressedReader.len - compressedReader.readPos - numBrickGroups * sizeof(uint64_t);
+
+	for(uint32_t i = 0; i < numBrickGroups; i++)
+	{
+		uint32_t startBrick = i * baseBrickGroupSize + min(i, brickGroupSizeRemainder);
+		uint32_t numBricks = baseBrickGroupSize + (i < brickGroupSizeRemainder ? 1 : 0);
+
+		uint64_t offset;
+		SPLVerror readOffsetError = splv_buffer_reader_read(&compressedReader, sizeof(uint64_t), &offset);
+		if(readOffsetError != SPLV_SUCCESS)
 		{
 			splv_frame_destroy(frame);
 
-			SPLV_LOG_ERROR("error while decoding brick");
-			return brickDecodeError;
+			SPLV_LOG_ERROR("failed to read brick group offset from decompressed stream");
+			return readOffsetError;
 		}
 
-		curBrickIdx++;
+		uint8_t* groupBuf = brickGroupsStart + offset;
+		uint64_t groupSize = brickGroupsLen - offset;
+
+		SPLVerror groupDecodeError = _splv_decoder_decode_brick_group(
+			decoder, frame, groupSize, groupBuf, startBrick,
+			numBrickGroups, lastFrame
+		);
+		if(groupDecodeError != SPLV_SUCCESS)
+		{
+			splv_frame_destroy(frame);
+
+			SPLV_LOG_ERROR("error decoding brick group");
+			return groupDecodeError;
+		}
 	}
 
 	//return:
@@ -368,8 +388,6 @@ SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
 		SPLV_FREE(decoder->scratchBufEncodedMap);
 	if(decoder->scratchBufBrickPositions)
 		SPLV_FREE(decoder->scratchBufBrickPositions);
-
-	splv_buffer_writer_destroy(&decoder->decodedFrameWriter);
 
 	if(decoder->fromFile)
 	{
@@ -442,6 +460,9 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 		return SPLV_ERROR_INVALID_INPUT;
 	}
 
+	if(header.encodingParams.gopSize == 0)
+		SPLV_LOG_WARNING("invalid GOP size - not neccesary for decoding, but indicates corrupt data");
+
 	if(fabsf(header.duration - ((float)header.frameCount / header.framerate)) > 0.1f)
 	{
 		header.duration = (float)header.frameCount / header.framerate;
@@ -450,12 +471,13 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 
 	//initialize struct:
 	//-----------------
-	decoder->width      = header.width;
-	decoder->height     = header.height;
-	decoder->depth      = header.depth;
-	decoder->framerate  = header.framerate;
-	decoder->frameCount = header.frameCount;
-	decoder->duration   = header.duration;
+	decoder->width          = header.width;
+	decoder->height         = header.height;
+	decoder->depth          = header.depth;
+	decoder->framerate      = header.framerate;
+	decoder->frameCount     = header.frameCount;
+	decoder->duration       = header.duration;
+	decoder->encodingParams = header.encodingParams;
 
 	//read frame pointers:
 	//-----------------
@@ -486,17 +508,6 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 		return frameTableReadError;
 	}
 
-	//create decoded frame writer:
-	//-----------------
-	SPLVerror frameWriterError = splv_buffer_writer_create(&decoder->decodedFrameWriter, 0);
-	if(frameWriterError != SPLV_SUCCESS)
-	{
-		splv_decoder_destroy(decoder);
-
-		SPLV_LOG_ERROR("failed to create decoded frame writer");
-		return frameWriterError;	
-	}
-
 	//preallocate space for compressed map + brick positions:
 	//-----------------
 	uint32_t mapWidth  = decoder->width  / SPLV_BRICK_SIZE;
@@ -524,6 +535,74 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 	//-----------------
 	return SPLV_SUCCESS;
 }
+
+//-------------------------------------------//
+
+static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVframe* outFrame, uint64_t compressedBufLen, uint8_t* compressedBuf, 
+	                                              uint32_t brickStartIdx, uint32_t numBricks, SPLVframe* lastFrame)
+{
+	//create decompressed buffer writer:
+	//-----------------
+	SPLVbufferWriter decompressedWriter;
+	SPLVerror writerError = splv_buffer_writer_create(&decompressedWriter, 0);
+	if(writerError != SPLV_SUCCESS)
+		return writerError;
+
+	//decompress:
+	//-----------------
+	SPLVerror decodeError = splv_rc_decode(compressedBufLen, compressedBuf, &decompressedWriter);
+	if(decodeError != SPLV_SUCCESS)
+	{
+		splv_buffer_writer_destroy(&decompressedWriter);
+
+		SPLV_LOG_ERROR("error decompressing frame");
+		return decodeError;
+	}
+
+	SPLVbufferReader decompressedReader;
+	SPLVerror readerError = splv_buffer_reader_create(&decompressedReader, decompressedWriter.buf, decompressedWriter.writePos);
+	if(readerError != SPLV_SUCCESS)
+	{
+		splv_buffer_writer_destroy(&decompressedWriter);
+
+		SPLV_LOG_ERROR("failed to create decompressed frame reader");
+		return readerError;
+	}
+
+	//read each brick:
+	//-----------------	
+	uint32_t curBrickIdx = brickStartIdx;
+
+	for(uint32_t i = 0; i < numBricks; i++)
+	{
+		SPLVerror brickDecodeError = splv_brick_decode(
+			&decompressedReader, 
+			&outFrame->bricks[curBrickIdx], 
+			decoder->scratchBufBrickPositions[i].x, 
+			decoder->scratchBufBrickPositions[i].y,
+			decoder->scratchBufBrickPositions[i].z, 
+			lastFrame
+		);
+
+		if(brickDecodeError != SPLV_SUCCESS)
+		{
+			splv_buffer_writer_destroy(&decompressedWriter);
+
+			SPLV_LOG_ERROR("error while decoding brick");
+			return brickDecodeError;
+		}
+
+		curBrickIdx++;
+	}
+
+	//cleanup + return:
+	//-----------------	
+	splv_buffer_writer_destroy(&decompressedWriter);
+
+	return SPLV_SUCCESS;
+}
+
+//-------------------------------------------//
 
 static inline SPLVerror _splv_decoder_read(SPLVdecoder* decoder, uint64_t size, void* dst)
 {

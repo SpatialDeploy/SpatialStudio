@@ -38,7 +38,6 @@ SPLVerror splv_buffer_reader_seek(SPLVbufferReader* reader, uint64_t pos)
 	return SPLV_SUCCESS;
 }
 
-
 //-------------------------------------------//
 
 SPLVerror splv_buffer_writer_create(SPLVbufferWriter* writer, uint64_t initialLen)

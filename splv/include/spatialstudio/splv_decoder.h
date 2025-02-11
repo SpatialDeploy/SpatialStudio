@@ -28,6 +28,8 @@ typedef struct SPLVdecoder
 
 	uint64_t* frameTable;
 
+	SPLVencodingParams encodingParams;
+
 	uint8_t fromFile;
 	union
 	{
@@ -40,8 +42,6 @@ typedef struct SPLVdecoder
 			uint8_t* scratchBuf;
 		} inFile;
 	};
-
-	SPLVbufferWriter decodedFrameWriter;
 
 	uint64_t encodedMapLen;
 	uint32_t* scratchBufEncodedMap;

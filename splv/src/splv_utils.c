@@ -47,7 +47,7 @@ static void _splv_frame_ref_add(SPLVframeRef* ref);
 static void _splv_frame_ref_remove(SPLVframeRef* ref);
 
 static SPLVerror _splv_encoder_sequential_create(SPLVencoderSequential* encoder, uint32_t width, uint32_t height, uint32_t depth, 
-                                                 float framerate, uint32_t gopSize, const char* outPath);
+                                                 float framerate, SPLVencodingParams encodingParams, const char* outPath);
 static SPLVerror _splv_encoder_sequential_finish(SPLVencoderSequential* encoder);
 static void _splv_encoder_sequential_abort(SPLVencoderSequential* encoder);
 static SPLVerror _splv_encoder_sequential_encode_frame(SPLVencoderSequential* encoder, SPLVframeRef* frame);
@@ -59,7 +59,7 @@ static SPLVerror _splv_decoder_sequential_decode(SPLVdecoderSequential* decoder,
 
 //-------------------------------------------//
 
-SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* outPath, uint32_t gopSize) 
+SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* outPath)
 {
 	//validate:
 	//---------------
@@ -76,13 +76,14 @@ SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const
 	uint32_t height = firstDecoder.height;
 	uint32_t depth = firstDecoder.depth;
 	float framerate = firstDecoder.framerate;
+	SPLVencodingParams encodingParams = firstDecoder.encodingParams;
 
 	splv_decoder_destroy(&firstDecoder);
 
 	//create output encoder:
 	//---------------
 	SPLVencoderSequential encoder;
-	SPLVerror encoderError = _splv_encoder_sequential_create(&encoder, width, height, depth, framerate, gopSize, outPath);
+	SPLVerror encoderError = _splv_encoder_sequential_create(&encoder, width, height, depth, framerate, encodingParams, outPath);
 	if(encoderError != SPLV_SUCCESS)
 		return encoderError;
 
@@ -146,7 +147,7 @@ SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const
 	return SPLV_SUCCESS;
 }
 
-SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const char* outDir, uint32_t gopSize, uint32_t* numSplits) 
+SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const char* outDir, uint32_t* numSplits) 
 {
 	//validate:
 	//---------------
@@ -183,7 +184,7 @@ SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const ch
 		SPLVerror encoderError = _splv_encoder_sequential_create(
 			&encoder,
 			decoder.impl.width, decoder.impl.height, decoder.impl.depth,
-			decoder.impl.framerate, gopSize,
+			decoder.impl.framerate, decoder.impl.encodingParams,
 			outPath
 		);
 
@@ -238,7 +239,7 @@ SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const ch
 	return SPLV_SUCCESS;
 }
 
-SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, uint32_t gopSize)
+SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, SPLVencodingParams encodingParams)
 {
 	//create decoder + encoder:
 	//---------------
@@ -251,7 +252,7 @@ SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, uint
 	SPLVerror encoderError = _splv_encoder_sequential_create(
 		&encoder,
 		decoder.implLegacy.width, decoder.implLegacy.height, decoder.implLegacy.depth,
-		decoder.implLegacy.framerate, gopSize, //TODO: store GOP size in file, right now we're potentially reecoding with different params
+		decoder.implLegacy.framerate, encodingParams, //TODO: store GOP size in file, right now we're potentially reecoding with different params
 		outPath
 	);
 	if(encoderError != SPLV_SUCCESS) 
@@ -314,9 +315,9 @@ static void _splv_frame_ref_remove(SPLVframeRef* ref)
 }
 
 static SPLVerror _splv_encoder_sequential_create(SPLVencoderSequential* encoder, uint32_t width, uint32_t height, uint32_t depth, 
-                                                 float framerate, uint32_t gopSize, const char* outPath) 
+                                                 float framerate, SPLVencodingParams encodingParams, const char* outPath) 
 {
-	SPLV_ERROR_PROPAGATE(splv_encoder_create(&encoder->impl, width, height, depth, framerate, gopSize, outPath));
+	SPLV_ERROR_PROPAGATE(splv_encoder_create(&encoder->impl, width, height, depth, framerate, encodingParams, outPath));
 
 	encoder->numFrameRefs = 0;
 	encoder->maxFrameRefs = 0;

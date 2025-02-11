@@ -126,6 +126,7 @@ int main(int argc, const char** argv)
 	float framerate = INFINITY;
 	
 	int32_t gopSize = 1;
+	int32_t maxBrickGroupSize = 256;
 
 	std::string outPath = "";
 
@@ -201,6 +202,27 @@ int main(int argc, const char** argv)
 				return -1;
 			}
 		}
+		else if(arg == "-b")
+		{
+			if(i + 1 >= (uint32_t)argc)
+			{
+				std::cout << "ERROR: not enough arguments supplied to \"-r\"" << std::endl;
+				return -1;
+			}
+
+			try
+			{
+				maxBrickGroupSize = std::stoi(argv[++i]);
+
+				if(maxBrickGroupSize < 0)
+					throw std::invalid_argument("");
+			}
+			catch(std::exception e)
+			{
+				std::cout << "ERROR: invalid maximum region size" << std::endl;
+				return -1;
+			}
+		}
 		else if(arg == "-o") //output file
 		{
 			if(i + 1 >= (uint32_t)argc)
@@ -239,8 +261,12 @@ int main(int argc, const char** argv)
 
 	//create outfile and encoder:
 	//---------------
+	SPLVencodingParams encodingParams;
+	encodingParams.gopSize = gopSize;
+	encodingParams.maxBrickGroupSize = maxBrickGroupSize;
+
 	SPLVencoder encoder;
-	SPLVerror encoderError = splv_encoder_create(&encoder, width, height, depth, framerate, gopSize, outPath.c_str());
+	SPLVerror encoderError = splv_encoder_create(&encoder, width, height, depth, framerate, encodingParams, outPath.c_str());
 	if(encoderError != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to create encoder with error code " << 

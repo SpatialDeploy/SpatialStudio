@@ -7,11 +7,14 @@
 
 //-------------------------------------------//
 
+static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVframe* frame, SPLVframeEncodingType frameType, uint32_t numBricks, 
+	                                              SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf);
+
 static void _splv_encoder_destroy(SPLVencoder* encoder);
 
 //-------------------------------------------//
 
-SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t height, uint32_t depth, float framerate, uint32_t gopSize, const char* outPath)
+SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t height, uint32_t depth, float framerate, SPLVencodingParams encodingParams, const char* outPath)
 {
 	//validate params:
 	//---------------
@@ -20,7 +23,11 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 	SPLV_ASSERT(width % SPLV_BRICK_SIZE == 0 && height % SPLV_BRICK_SIZE == 0 && depth == SPLV_BRICK_SIZE == 0, 
 		"volume dimensions must be a multiple of SPLV_BRICK_SIZE");
 	SPLV_ASSERT(framerate > 0.0f, "framerate must be positive");
-	SPLV_ASSERT(gopSize > 0, "gop size must be positive");
+	SPLV_ASSERT(encodingParams.gopSize > 0, "gop size must be positive");
+	SPLV_ASSERT(encodingParams.maxRegionDim % SPLV_BRICK_SIZE == 0, "maxRegionDim must be a multiple of SPLV_BRICK_SIZE");
+
+	if(encodingParams.maxBrickGroupSize > 0 && encodingParams.maxBrickGroupSize < 128)
+		SPLV_LOG_WARNING("small values of maxBrickGroupSize can significantly reduce efficiency and decoding speed");
 
 	//initialize:
 	//---------------
@@ -32,9 +39,7 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 	encoder->framerate = framerate;
 	encoder->frameCount = 0;
 	encoder->frameTable = (SPLVdynArrayUint64){0};
-	encoder->gopSize = gopSize;
-	encoder->frameWriter = (SPLVbufferWriter){0};
-	encoder->encodedFrameWriter = (SPLVbufferWriter){0};
+	encoder->encodingParams = encodingParams;
 
 	//create frame table:
 	//---------------
@@ -58,26 +63,6 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 		return SPLV_ERROR_FILE_OPEN;
 	}
 
-	//create frame writers:
-	//---------------
-	SPLVerror frameWriterError = splv_buffer_writer_create(&encoder->frameWriter, 0);
-	if(frameWriterError != SPLV_SUCCESS)
-	{
-		_splv_encoder_destroy(encoder);
-
-		SPLV_LOG_ERROR("failed to create buffer writer for frame data");
-		return frameWriterError;
-	}
-
-	SPLVerror encodedFrameWriterError = splv_buffer_writer_create(&encoder->encodedFrameWriter, 0);
-	if(encodedFrameWriterError != SPLV_SUCCESS)
-	{
-		_splv_encoder_destroy(encoder);
-
-		SPLV_LOG_ERROR("failed to create buffer writer for encoded frame data");
-		return frameWriterError;
-	}
-
 	//allocate scratch buffers:
 	//---------------
 	uint32_t widthMap  = encoder->width  / SPLV_BRICK_SIZE;
@@ -90,12 +75,20 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 	mapLenBitmap /= 4; //4 bytes per uint32_t
 	mapLenBitmap /= 8; //8 bits per byte
 
+	uint32_t maxBrickGroups;
+	if(encoder->encodingParams.maxBrickGroupSize == 0)
+		maxBrickGroups = 1;
+	else
+		maxBrickGroups = (mapLen + encoder->encodingParams.maxBrickGroupSize - 1) / encoder->encodingParams.maxBrickGroupSize;
+
 	encoder->mapBitmapLen = mapLenBitmap;
 
 	encoder->scratchBufMapBitmap = (uint32_t*)SPLV_MALLOC(mapLenBitmap * sizeof(uint32_t));
 	encoder->scratchBufBricks = (SPLVbrick**)SPLV_MALLOC(mapLen * sizeof(SPLVbrick*));
 	encoder->scratchBufBrickPositions = (SPLVcoordinate*)SPLV_MALLOC(mapLen * sizeof(SPLVcoordinate));
-	if(!encoder->scratchBufMapBitmap || !encoder->scratchBufBricks || !encoder->scratchBufBrickPositions)
+	encoder->scratchBufBrickGroupWriters = (SPLVbufferWriter*)SPLV_MALLOC(maxBrickGroups * sizeof(SPLVbufferWriter));
+	
+	if(!encoder->scratchBufMapBitmap || !encoder->scratchBufBricks || !encoder->scratchBufBrickPositions || !encoder->scratchBufBrickGroupWriters)
 	{
 		_splv_encoder_destroy(encoder);
 
@@ -131,10 +124,22 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 	//determine frame type:
 	//---------------
 	SPLVframeEncodingType frameType;
-	if(encoder->frameCount % encoder->gopSize == 0)
+	if(encoder->frameCount % encoder->encodingParams.gopSize == 0)
 		frameType = SPLV_FRAME_ENCODING_TYPE_I;
 	else
 		frameType = SPLV_FRAME_ENCODING_TYPE_P;
+
+	//get frame ptr:
+	//---------------
+	long framePtr = ftell(encoder->outFile);
+	if(framePtr	== -1L)
+	{
+		SPLV_LOG_ERROR("error getting file write position");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	uint64_t frameTableEntry = ((uint64_t)frameType << 56) | (uint64_t)framePtr;
+	SPLV_ERROR_PROPAGATE(splv_dyn_array_uint64_push(&encoder->frameTable, frameTableEntry));
 
 	//compress map (convert to bitmap):
 	//---------------
@@ -166,60 +171,79 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 	//sanity check
 	SPLV_ASSERT(frame->bricksLen == numBricksOrdered, "number of ordered bricks does not match original brick count, sanity check failed");
 
-	//seralize frame:
+	//write num bricks + map:
 	//---------------
-	splv_buffer_writer_reset(&encoder->frameWriter);
-
-	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(&encoder->frameWriter, sizeof(uint32_t), &numBricksOrdered));
-	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(&encoder->frameWriter, encoder->mapBitmapLen * sizeof(uint32_t), encoder->scratchBufMapBitmap));
-
-	for(uint32_t i = 0; i < numBricksOrdered; i++)
+	if(fwrite(&numBricksOrdered, sizeof(uint32_t), 1, encoder->outFile) < 1)
 	{
-		if(frameType == SPLV_FRAME_ENCODING_TYPE_P)
-		{
-			SPLVcoordinate brickPos = encoder->scratchBufBrickPositions[i];
-			SPLV_ERROR_PROPAGATE(splv_brick_encode_predictive(encoder->scratchBufBricks[i], 
-				brickPos.x, brickPos.y, brickPos.z, 
-				&encoder->frameWriter, &encoder->lastFrame
-			));
-		}
-		else
-		{
-			SPLV_ERROR_PROPAGATE(splv_brick_encode_intra(
-				encoder->scratchBufBricks[i], 
-				&encoder->frameWriter
-			));
-		}
-	}
-
-	//get frame ptr:
-	//---------------
-	long framePtr = ftell(encoder->outFile);
-	if(framePtr	== -1L)
-	{
-		SPLV_LOG_ERROR("error getting file write position");
+		SPLV_LOG_ERROR("error writing brick count to output file");
 		return SPLV_ERROR_FILE_WRITE;
 	}
 
-	uint64_t frameTableEntry = ((uint64_t)frameType << 56) | (uint64_t)framePtr;
-	SPLV_ERROR_PROPAGATE(splv_dyn_array_uint64_push(&encoder->frameTable, frameTableEntry));
-
-	//entropy code frame:
-	//---------------
-	splv_buffer_writer_reset(&encoder->encodedFrameWriter);
-
-	SPLV_ERROR_PROPAGATE(splv_rc_encode(
-		encoder->frameWriter.writePos, 
-		encoder->frameWriter.buf, 
-		&encoder->encodedFrameWriter
-	));
-
-	//write encoded frame to output file:
-	//---------------
-	if(fwrite(encoder->encodedFrameWriter.buf, encoder->encodedFrameWriter.writePos, 1, encoder->outFile) < 1)
+	if(fwrite(encoder->scratchBufMapBitmap, encoder->mapBitmapLen * sizeof(uint32_t), 1, encoder->outFile) < 1)
 	{
-		SPLV_LOG_ERROR("failed to write encoded frame");
+		SPLV_LOG_ERROR("error writing map bitmap to output file");
 		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	//encode each brick group:
+	//---------------
+	uint32_t maxBrickGroupSize;
+	if(encoder->encodingParams.maxBrickGroupSize == 0)
+		maxBrickGroupSize = max(numBricksOrdered, 1);
+	else
+		maxBrickGroupSize = encoder->encodingParams.maxBrickGroupSize;
+
+	uint32_t numBrickGroups = (numBricksOrdered + maxBrickGroupSize - 1) / maxBrickGroupSize;
+	uint32_t baseBrickGroupSize      = numBricksOrdered / max(numBrickGroups, 1);
+	uint32_t brickGroupSizeRemainder = numBricksOrdered % max(numBrickGroups, 1);
+
+	for(uint32_t i = 0; i < numBrickGroups; i++)
+	{
+		uint32_t startBrick = i * baseBrickGroupSize + min(i, brickGroupSizeRemainder);
+		uint32_t numBricks = baseBrickGroupSize + (i < brickGroupSizeRemainder ? 1 : 0);
+
+		SPLVerror brickGroupError = _splv_encoder_encode_brick_group(
+			encoder, frame, frameType, numBricks, 
+			&encoder->scratchBufBricks[startBrick],
+			&encoder->scratchBufBrickPositions[startBrick],
+			&encoder->scratchBufBrickGroupWriters[i]
+		);
+
+		if(brickGroupError != SPLV_SUCCESS)
+		{
+			SPLV_LOG_ERROR("error encoding brick group");
+			return brickGroupError;
+		}
+	}
+
+	//write encoded groups to output file:
+	//---------------
+	uint64_t curGroupOffset = 0;
+
+	for(uint32_t i = 0; i < numBrickGroups; i++)
+	{
+		if(fwrite(&curGroupOffset, sizeof(uint64_t), 1, encoder->outFile) < 1)
+		{
+			SPLV_LOG_ERROR("failed to write group offset to output file");
+			return SPLV_ERROR_FILE_WRITE;
+		}
+
+		curGroupOffset += encoder->scratchBufBrickGroupWriters[i].writePos;
+	}
+
+	for(uint32_t i = 0; i < numBrickGroups; i++)
+	{
+		uint8_t* buf  = encoder->scratchBufBrickGroupWriters[i].buf;
+		uint64_t size = encoder->scratchBufBrickGroupWriters[i].writePos;
+
+		if(fwrite(buf, size, 1, encoder->outFile) < 1)
+		{
+			SPLV_LOG_ERROR("failed to write brick group to output file");
+			return SPLV_ERROR_FILE_WRITE;
+		}
+
+		//cleanup
+		splv_buffer_writer_destroy(&encoder->scratchBufBrickGroupWriters[i]);
 	}
 
 	//cleanup + return:
@@ -228,7 +252,7 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 	encoder->lastFrame = *frame;
 
 	//can only free previous frames if at end of GOP
-	*canFree = (encoder->frameCount % encoder->gopSize) == 0;
+	*canFree = (encoder->frameCount % encoder->encodingParams.gopSize) == 0;
 	return SPLV_SUCCESS;
 }
 
@@ -262,6 +286,7 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 	header.frameCount = encoder->frameCount;
 	header.duration = (float)encoder->frameCount / encoder->framerate;
 	header.frameTablePtr = (uint64_t)frameTablePtr;
+	header.encodingParams = encoder->encodingParams;
 
 	if(fseek(encoder->outFile, 0, SEEK_SET) != 0)
 	{
@@ -285,13 +310,83 @@ SPLVerror splv_encoder_finish(SPLVencoder* encoder)
 
 	encoder->outFile = NULL;
 	_splv_encoder_destroy(encoder);
-	
+
 	return SPLV_SUCCESS;
 }
 
 void splv_encoder_abort(SPLVencoder* encoder)
 {
 	_splv_encoder_destroy(encoder);
+}
+
+//-------------------------------------------//
+
+static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVframe* frame, SPLVframeEncodingType frameType, uint32_t numBricks, 
+                                                  SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf)
+{
+	//encode bricks:
+	//---------------
+	SPLVbufferWriter brickWriter;
+	SPLVerror brickWriterError = splv_buffer_writer_create(&brickWriter, 0);
+	if(brickWriterError != SPLV_SUCCESS)
+		return brickWriterError;
+
+	for(uint32_t i = 0; i < numBricks; i++)
+	{
+		SPLVerror brickEncodeError;
+
+		if(frameType == SPLV_FRAME_ENCODING_TYPE_P)
+		{
+			SPLVcoordinate brickPos = brickPositions[i];
+			brickEncodeError = splv_brick_encode_predictive(
+				bricks[i], brickPos.x, brickPos.y, brickPos.z, 
+				&brickWriter, &encoder->lastFrame
+			);
+		}
+		else
+		{
+			brickEncodeError = splv_brick_encode_intra(
+				bricks[i], &brickWriter
+			);
+		}
+
+		if(brickEncodeError != SPLV_SUCCESS)
+		{
+			splv_buffer_writer_destroy(&brickWriter);
+
+			SPLV_LOG_ERROR("error encoding brick");
+			return brickEncodeError;
+		}
+	}
+
+	//entropy code group:
+	//---------------
+	SPLVerror encodedWriterError = splv_buffer_writer_create(outBuf, 0);
+	if(encodedWriterError != SPLV_SUCCESS)
+	{
+		splv_buffer_writer_destroy(&brickWriter);
+
+		return encodedWriterError;
+	}
+
+	SPLVerror encodeError = splv_rc_encode(
+		brickWriter.writePos, brickWriter.buf, outBuf
+	);
+
+	if(encodeError != SPLV_SUCCESS)
+	{
+		splv_buffer_writer_destroy(outBuf);
+		splv_buffer_writer_destroy(&brickWriter);
+
+		SPLV_LOG_ERROR("error range coding brick group");
+		return encodeError;
+	}
+
+	//cleanup + return:
+	//---------------
+	splv_buffer_writer_destroy(&brickWriter);
+
+	return SPLV_SUCCESS;
 }
 
 //-------------------------------------------//
@@ -304,9 +399,8 @@ static void _splv_encoder_destroy(SPLVencoder* encoder)
 		SPLV_FREE(encoder->scratchBufBricks);
 	if(encoder->scratchBufBrickPositions)
 		SPLV_FREE(encoder->scratchBufBrickPositions);
-
-	splv_buffer_writer_destroy(&encoder->frameWriter);
-	splv_buffer_writer_destroy(&encoder->encodedFrameWriter);
+	if(encoder->scratchBufBrickGroupWriters)
+		SPLV_FREE(encoder->scratchBufBrickGroupWriters);
 
 	if(encoder->outFile)
 		fclose(encoder->outFile);
