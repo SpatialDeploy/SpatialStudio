@@ -6,6 +6,11 @@
 
 //-------------------------------------------//
 
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+
+//-------------------------------------------//
+
 static SPLVerror _splv_decoder_create(SPLVdecoder* decoder);
 
 static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVframe* outFrame, uint64_t compressedBufLen, uint8_t* compressedBuf, 
@@ -328,7 +333,7 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 
 		SPLVerror groupDecodeError = _splv_decoder_decode_brick_group(
 			decoder, frame, groupSize, groupBuf, startBrick,
-			numBrickGroups, lastFrame
+			numBricks, lastFrame
 		);
 		if(groupDecodeError != SPLV_SUCCESS)
 		{
@@ -571,16 +576,16 @@ static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVfram
 
 	//read each brick:
 	//-----------------	
-	uint32_t curBrickIdx = brickStartIdx;
-
 	for(uint32_t i = 0; i < numBricks; i++)
 	{
+		uint32_t idx = brickStartIdx + i;
+
 		SPLVerror brickDecodeError = splv_brick_decode(
 			&decompressedReader, 
-			&outFrame->bricks[curBrickIdx], 
-			decoder->scratchBufBrickPositions[i].x, 
-			decoder->scratchBufBrickPositions[i].y,
-			decoder->scratchBufBrickPositions[i].z, 
+			&outFrame->bricks[idx], 
+			decoder->scratchBufBrickPositions[idx].x, 
+			decoder->scratchBufBrickPositions[idx].y,
+			decoder->scratchBufBrickPositions[idx].z, 
 			lastFrame
 		);
 
@@ -591,8 +596,6 @@ static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVfram
 			SPLV_LOG_ERROR("error while decoding brick");
 			return brickDecodeError;
 		}
-
-		curBrickIdx++;
 	}
 
 	//cleanup + return:

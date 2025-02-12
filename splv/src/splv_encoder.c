@@ -7,6 +7,11 @@
 
 //-------------------------------------------//
 
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+
+//-------------------------------------------//
+
 static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVframe* frame, SPLVframeEncodingType frameType, uint32_t numBricks, 
 	                                              SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf);
 
