@@ -45,6 +45,7 @@ set(splv_src
     "splv/src/splv_buffer_io.c"
     "splv/src/splv_vox_utils.c"
     "splv/src/splv_utils.c"
+    "splv/src/splv_threading.c"
     "splv/src/splv_nvdb_utils.cpp"
     "splv/src/splv_decoder_legacy.cpp"
 )

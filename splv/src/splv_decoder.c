@@ -13,8 +13,10 @@
 
 static SPLVerror _splv_decoder_create(SPLVdecoder* decoder);
 
-static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVframe* outFrame, uint64_t compressedBufLen, uint8_t* compressedBuf, 
-	                                              uint32_t brickStartIdx, uint32_t numBricks, SPLVframe* lastFrame);
+static SPLVerror _splv_decoder_thread_pool_create(SPLVdecoderThreadPool** pool, uint32_t maxBrickGroups);
+static void _splv_decoder_thread_pool_destroy(SPLVdecoderThreadPool* pool);
+static void* _splv_decoder_thread_pool_thread_entry(void* pool);
+static SPLVerror _splv_decoder_decode_brick_group(SPLVbrickGroupDecodeInfo info);
 
 static inline SPLVerror _splv_decoder_read(SPLVdecoder* decoder, uint64_t size, void* dst);
 static inline SPLVerror _splv_decoder_seek(SPLVdecoder* decoder, uint64_t pos);
@@ -313,6 +315,14 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	uint8_t* brickGroupsStart = compressedReader.buf + compressedReader.readPos + numBrickGroups * sizeof(uint64_t);
 	uint64_t brickGroupsLen   = compressedReader.len - compressedReader.readPos - numBrickGroups * sizeof(uint64_t);
 
+	//TODO: error checking for mutex/cond vars? (dont think they can ever fail except for programmer error)
+
+	splv_mutex_lock(&decoder->threadPool->decodingMutex);
+	decoder->threadPool->numGroupsDecoding = numBrickGroups;
+	splv_mutex_unlock(&decoder->threadPool->decodingMutex);
+
+	splv_mutex_lock(&decoder->threadPool->groupStackMutex);
+
 	for(uint32_t i = 0; i < numBrickGroups; i++)
 	{
 		uint32_t startBrick = i * baseBrickGroupSize + min(i, brickGroupSizeRemainder);
@@ -322,6 +332,7 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		SPLVerror readOffsetError = splv_buffer_reader_read(&compressedReader, sizeof(uint64_t), &offset);
 		if(readOffsetError != SPLV_SUCCESS)
 		{
+			splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
 			splv_frame_destroy(frame);
 
 			SPLV_LOG_ERROR("failed to read brick group offset from decompressed stream");
@@ -331,18 +342,31 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		uint8_t* groupBuf = brickGroupsStart + offset;
 		uint64_t groupSize = brickGroupsLen - offset;
 
-		SPLVerror groupDecodeError = _splv_decoder_decode_brick_group(
-			decoder, frame, groupSize, groupBuf, startBrick,
-			numBricks, lastFrame
-		);
-		if(groupDecodeError != SPLV_SUCCESS)
-		{
-			splv_frame_destroy(frame);
+		SPLVbrickGroupDecodeInfo decodeInfo;
+		decodeInfo.decoder = decoder;
+		decodeInfo.outFrame = frame;
+		decodeInfo.compressedBufLen = groupSize;
+		decodeInfo.compressedBuf = groupBuf;
+		decodeInfo.brickStartIdx = startBrick;
+		decodeInfo.numBricks = numBricks;
+		decodeInfo.lastFrame = lastFrame;
 
-			SPLV_LOG_ERROR("error decoding brick group");
-			return groupDecodeError;
-		}
+		decoder->threadPool->groupStack[decoder->threadPool->groupStackSize] = decodeInfo;
+		decoder->threadPool->groupStackSize++;
 	}
+
+	splv_condition_variable_signal_all(&decoder->threadPool->groupStackEmptyCond);
+
+	splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
+
+	//wait for all threads to exit:
+	//-----------------
+	splv_mutex_lock(&decoder->threadPool->decodingMutex);
+
+	while(decoder->threadPool->numGroupsDecoding > 0)
+		splv_condition_variable_wait(&decoder->threadPool->decodingDoneCond, &decoder->threadPool->decodingMutex);
+
+	splv_mutex_unlock(&decoder->threadPool->decodingMutex);
 
 	//return:
 	//-----------------
@@ -389,6 +413,8 @@ SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_
 
 SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
 {
+	_splv_decoder_thread_pool_destroy(decoder->threadPool);
+
 	if(decoder->scratchBufEncodedMap)
 		SPLV_FREE(decoder->scratchBufEncodedMap);
 	if(decoder->scratchBufBrickPositions)
@@ -536,6 +562,24 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 		return SPLV_ERROR_OUT_OF_MEMORY;
 	}
 
+	//initialize thread pool:
+	//-----------------
+	uint32_t maxBrickGroups;
+	if(decoder->encodingParams.maxBrickGroupSize == 0)
+		maxBrickGroups = 1;
+	else
+		maxBrickGroups = (uint32_t)((mapLen + decoder->encodingParams.maxBrickGroupSize - 1) / decoder->encodingParams.maxBrickGroupSize);
+
+	SPLVerror threadPoolError = _splv_decoder_thread_pool_create(&decoder->threadPool, maxBrickGroups);
+	if(threadPoolError != SPLV_SUCCESS)
+	{
+		decoder->threadPool = NULL;
+		splv_decoder_destroy(decoder);
+
+		SPLV_LOG_ERROR("failed to create decoder thread pool");
+		return threadPoolError;
+	}
+
 	//return:
 	//-----------------
 	return SPLV_SUCCESS;
@@ -543,8 +587,177 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 
 //-------------------------------------------//
 
-static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVframe* outFrame, uint64_t compressedBufLen, uint8_t* compressedBuf, 
-	                                              uint32_t brickStartIdx, uint32_t numBricks, SPLVframe* lastFrame)
+static SPLVerror _splv_decoder_thread_pool_create(SPLVdecoderThreadPool** p, uint32_t maxBrickGroups)
+{
+	//alloc struct:
+	//-----------------
+	*p = (SPLVdecoderThreadPool*)SPLV_MALLOC(sizeof(SPLVdecoderThreadPool));
+	SPLVdecoderThreadPool* pool = *p;
+	if(!pool)
+	{
+		_splv_decoder_thread_pool_destroy(pool);
+
+		SPLV_LOG_ERROR("failed to allocate thread pool struct");
+		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
+
+	//create group stack:
+	//-----------------
+	pool->groupStackSize = 0;
+	pool->groupStack = (SPLVbrickGroupDecodeInfo*)SPLV_MALLOC(maxBrickGroups * sizeof(SPLVbrickGroupDecodeInfo));
+	if(!pool->groupStack)
+	{
+		_splv_decoder_thread_pool_destroy(pool);
+
+		SPLV_LOG_ERROR("failed to allocate thread pool stack");
+		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
+
+	SPLVerror groupMutexError = splv_mutex_init(&pool->groupStackMutex);
+	if(groupMutexError != SPLV_SUCCESS)
+	{
+		_splv_decoder_thread_pool_destroy(pool);
+
+		SPLV_LOG_ERROR("failed to create brick group mutex");
+		return groupMutexError;
+	}
+
+	SPLVerror groupCondError = splv_condition_variable_init(&pool->groupStackEmptyCond);
+	if(groupCondError != SPLV_SUCCESS)
+	{
+		_splv_decoder_thread_pool_destroy(pool);
+
+		SPLV_LOG_ERROR("failed to create brick group empty condition variable");
+		return groupCondError;
+	}
+
+	//create decoding threads cond:
+	//-----------------
+	pool->numGroupsDecoding = 0;
+
+	SPLVerror decodingMutexError = splv_mutex_init(&pool->decodingMutex);
+	if(decodingMutexError != SPLV_SUCCESS)
+	{
+		_splv_decoder_thread_pool_destroy(pool);
+
+		SPLV_LOG_ERROR("failed to create decoding mutex");
+		return decodingMutexError;
+	}
+
+	SPLVerror decodingCondError = splv_condition_variable_init(&pool->decodingDoneCond);
+	if(decodingCondError != SPLV_SUCCESS)
+	{
+		_splv_decoder_thread_pool_destroy(pool);
+
+		SPLV_LOG_ERROR("failed to create decoding done condition variable");
+		return decodingCondError;
+	}
+
+	//start threads:
+	//-----------------
+	pool->threadsShouldExit = 0;
+	for(uint32_t i = 0; i < SPLV_DECODER_THREAD_POOL_SIZE; i++)
+	{
+		SPLVerror threadError = splv_thread_create(&pool->threads[i], _splv_decoder_thread_pool_thread_entry, pool);
+		if(threadError != SPLV_SUCCESS)
+		{
+			_splv_decoder_thread_pool_destroy(pool);
+
+			SPLV_LOG_ERROR("failed to create decoder thread pool thread");
+			return threadError;
+		}
+	}
+
+	return SPLV_SUCCESS;
+}
+
+static void _splv_decoder_thread_pool_destroy(SPLVdecoderThreadPool* pool)
+{
+	if(!pool)
+		return;
+
+	pool->threadsShouldExit = 1;
+	if(splv_condition_variable_signal_all(&pool->groupStackEmptyCond) != SPLV_SUCCESS)
+	{
+		SPLV_LOG_ERROR("failed to cleanup thread pool - could not notify cond var");
+		return;
+	}
+
+	for(uint32_t i = 0; i < SPLV_DECODER_THREAD_POOL_SIZE; i++)
+	{
+		if(splv_thread_join(&pool->threads[i], NULL) != SPLV_SUCCESS)
+			SPLV_LOG_ERROR("failed to cleanup thread pool - could not join with thread");
+	}
+
+	if(splv_mutex_destroy(&pool->groupStackMutex) != SPLV_SUCCESS)
+	{
+		SPLV_LOG_ERROR("failed to cleanup thread pool - could not destroy mutex");
+		return;
+	}
+	
+	if(splv_condition_variable_destroy(&pool->groupStackEmptyCond) != SPLV_SUCCESS)
+	{
+		SPLV_LOG_ERROR("failed to cleanup thread pool - could not destroy cond var");
+		return;
+	}
+
+	if(splv_mutex_destroy(&pool->decodingMutex) != SPLV_SUCCESS)
+	{
+		SPLV_LOG_ERROR("failed to cleanup thread pool - could not destroy mutex");
+		return;
+	}
+
+	if(splv_condition_variable_destroy(&pool->decodingDoneCond) != SPLV_SUCCESS)
+	{
+		SPLV_LOG_ERROR("failed to cleanup thread pool - could not destroy cond var");
+		return;
+	}
+
+	SPLV_FREE(pool->groupStack);
+	SPLV_FREE(pool);
+}
+
+static void* _splv_decoder_thread_pool_thread_entry(void* arg)
+{
+	//TODO: we are not yet handling failure conditions. how to do this?
+
+	SPLVdecoderThreadPool* pool = (SPLVdecoderThreadPool*)arg;
+
+	while(1)
+	{
+
+		splv_mutex_lock(&pool->groupStackMutex);
+		while(pool->groupStackSize == 0 && pool->threadsShouldExit == 0)
+			splv_condition_variable_wait(&pool->groupStackEmptyCond, &pool->groupStackMutex);
+
+		if(pool->threadsShouldExit)
+		{
+			splv_mutex_unlock(&pool->groupStackMutex);
+			break;
+		}
+
+		SPLVbrickGroupDecodeInfo decodeInfo = pool->groupStack[pool->groupStackSize - 1];
+		pool->groupStackSize--;
+
+		splv_mutex_unlock(&pool->groupStackMutex);
+
+		SPLVerror decodeError = _splv_decoder_decode_brick_group(decodeInfo);
+		if(decodeError != SPLV_SUCCESS)
+			SPLV_LOG_ERROR("failed to decode brick group");
+
+		splv_mutex_lock(&pool->decodingMutex);
+		
+		pool->numGroupsDecoding--;
+		if(pool->numGroupsDecoding == 0)
+			splv_condition_variable_signal_one(&pool->decodingDoneCond);
+
+		splv_mutex_unlock(&pool->decodingMutex);
+	}
+
+	return NULL;
+}
+
+static SPLVerror _splv_decoder_decode_brick_group(SPLVbrickGroupDecodeInfo info)
 {
 	//create decompressed buffer writer:
 	//-----------------
@@ -555,7 +768,7 @@ static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVfram
 
 	//decompress:
 	//-----------------
-	SPLVerror decodeError = splv_rc_decode(compressedBufLen, compressedBuf, &decompressedWriter);
+	SPLVerror decodeError = splv_rc_decode(info.compressedBufLen, info.compressedBuf, &decompressedWriter);
 	if(decodeError != SPLV_SUCCESS)
 	{
 		splv_buffer_writer_destroy(&decompressedWriter);
@@ -576,17 +789,17 @@ static SPLVerror _splv_decoder_decode_brick_group(SPLVdecoder* decoder, SPLVfram
 
 	//read each brick:
 	//-----------------	
-	for(uint32_t i = 0; i < numBricks; i++)
+	for(uint32_t i = 0; i < info.numBricks; i++)
 	{
-		uint32_t idx = brickStartIdx + i;
+		uint32_t idx = info.brickStartIdx + i;
 
 		SPLVerror brickDecodeError = splv_brick_decode(
 			&decompressedReader, 
-			&outFrame->bricks[idx], 
-			decoder->scratchBufBrickPositions[idx].x, 
-			decoder->scratchBufBrickPositions[idx].y,
-			decoder->scratchBufBrickPositions[idx].z, 
-			lastFrame
+			&info.outFrame->bricks[idx], 
+			info.decoder->scratchBufBrickPositions[idx].x, 
+			info.decoder->scratchBufBrickPositions[idx].y,
+			info.decoder->scratchBufBrickPositions[idx].z, 
+			info.lastFrame
 		);
 
 		if(brickDecodeError != SPLV_SUCCESS)

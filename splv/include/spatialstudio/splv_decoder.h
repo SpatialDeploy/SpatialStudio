@@ -10,14 +10,56 @@
 #include "splv_global.h"
 #include "splv_format.h"
 #include "splv_buffer_io.h"
+#include "splv_threading.h"
 
 //-------------------------------------------//
+
+#ifndef SPLV_DECODER_THREAD_POOL_SIZE
+	#define SPLV_DECODER_THREAD_POOL_SIZE 4
+#endif
+
+//-------------------------------------------//
+
+typedef struct SPLVdecoder SPLVdecoder;
+
+/**
+ * all info needed for a thread to decode a brick group
+ */
+typedef struct SPLVbrickGroupDecodeInfo
+{
+	SPLVdecoder* decoder;
+	SPLVframe* outFrame;
+	uint64_t compressedBufLen;
+	uint8_t* compressedBuf;
+	uint32_t brickStartIdx;
+	uint32_t numBricks;
+	SPLVframe* lastFrame;
+} SPLVbrickGroupDecodeInfo;
+
+/**
+ * thread pool to accelerate decoder
+ */
+typedef struct SPLVdecoderThreadPool
+{
+	uint32_t threadsShouldExit;
+	SPLVthread threads[SPLV_DECODER_THREAD_POOL_SIZE];
+
+	uint32_t groupStackSize;
+	SPLVbrickGroupDecodeInfo* groupStack;
+	SPLVmutex groupStackMutex;
+	SPLVconditionVariable groupStackEmptyCond;
+
+	uint32_t numGroupsDecoding;
+	SPLVmutex decodingMutex;
+	SPLVconditionVariable decodingDoneCond;
+} SPLVdecoderThreadPool;
 
 /**
  * all state needed by a decoder
  */
 typedef struct SPLVdecoder
 {
+	//splv info:
 	uint32_t width;
 	uint32_t height;
 	uint32_t depth;
@@ -30,6 +72,7 @@ typedef struct SPLVdecoder
 
 	SPLVencodingParams encodingParams;
 
+	//input info:
 	uint8_t fromFile;
 	union
 	{
@@ -43,9 +86,13 @@ typedef struct SPLVdecoder
 		} inFile;
 	};
 
+	//scratch buffers:
 	uint64_t encodedMapLen;
 	uint32_t* scratchBufEncodedMap;
 	SPLVcoordinate* scratchBufBrickPositions;
+
+	//thread pool:
+	SPLVdecoderThreadPool* threadPool;
 } SPLVdecoder;
 
 /**

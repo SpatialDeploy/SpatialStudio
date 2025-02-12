@@ -23,7 +23,8 @@ typedef enum SPLVerror
 	SPLV_ERROR_FILE_READ,
 	SPLV_ERROR_FILE_WRITE,
 	SPLV_ERROR_RUNTIME,
-	SPLV_ERROR_INTERNAL
+	SPLV_ERROR_INTERNAL,
+	SPLV_ERROR_THREADING
 } SPLVerror;
 
 //-------------------------------------------//
