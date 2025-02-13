@@ -41,6 +41,8 @@ typedef struct SPLVdecoderLegacy
 		} inFile;
 	};
 
+	SPLVbufferWriter decodedFrameWriter;
+
 	uint64_t encodedMapLen;
 	uint32_t* scratchBufEncodedMap;
 	SPLVcoordinate* scratchBufBrickPositions;

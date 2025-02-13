@@ -6,6 +6,10 @@
 
 //-------------------------------------------//
 
+#ifndef __EMSCRIPTEN__
+	#define SPLV_DECODER_MULTITHREADING
+#endif
+
 #define max(a,b) (((a) > (b)) ? (a) : (b))
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 
@@ -317,11 +321,13 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 
 	//TODO: error checking for mutex/cond vars? (dont think they can ever fail except for programmer error)
 
+#ifdef SPLV_DECODER_MULTITHREADING
 	splv_mutex_lock(&decoder->threadPool->decodingMutex);
 	decoder->threadPool->numGroupsDecoding = numBrickGroups;
 	splv_mutex_unlock(&decoder->threadPool->decodingMutex);
 
 	splv_mutex_lock(&decoder->threadPool->groupStackMutex);
+#endif
 
 	for(uint32_t i = 0; i < numBrickGroups; i++)
 	{
@@ -332,7 +338,9 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		SPLVerror readOffsetError = splv_buffer_reader_read(&compressedReader, sizeof(uint64_t), &offset);
 		if(readOffsetError != SPLV_SUCCESS)
 		{
+		#ifdef SPLV_DECODER_MULTITHREADING
 			splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
+		#endif
 			splv_frame_destroy(frame);
 
 			SPLV_LOG_ERROR("failed to read brick group offset from decompressed stream");
@@ -351,10 +359,15 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		decodeInfo.numBricks = numBricks;
 		decodeInfo.lastFrame = lastFrame;
 
+	#ifdef SPLV_DECODER_MULTITHREADING
 		decoder->threadPool->groupStack[decoder->threadPool->groupStackSize] = decodeInfo;
 		decoder->threadPool->groupStackSize++;
+	#else
+		_splv_decoder_decode_brick_group(decodeInfo);
+	#endif
 	}
 
+#ifdef SPLV_DECODER_MULTITHREADING
 	splv_condition_variable_signal_all(&decoder->threadPool->groupStackEmptyCond);
 
 	splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
@@ -367,6 +380,7 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		splv_condition_variable_wait(&decoder->threadPool->decodingDoneCond, &decoder->threadPool->decodingMutex);
 
 	splv_mutex_unlock(&decoder->threadPool->decodingMutex);
+#endif
 
 	//return:
 	//-----------------
@@ -413,7 +427,9 @@ SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_
 
 SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
 {
+#ifdef SPLV_DECODER_MULTITHREADING
 	_splv_decoder_thread_pool_destroy(decoder->threadPool);
+#endif
 
 	if(decoder->scratchBufEncodedMap)
 		SPLV_FREE(decoder->scratchBufEncodedMap);
@@ -564,6 +580,7 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 
 	//initialize thread pool:
 	//-----------------
+#ifdef SPLV_DECODER_MULTITHREADING
 	uint32_t maxBrickGroups;
 	if(decoder->encodingParams.maxBrickGroupSize == 0)
 		maxBrickGroups = 1;
@@ -579,6 +596,7 @@ static SPLVerror _splv_decoder_create(SPLVdecoder* decoder)
 		SPLV_LOG_ERROR("failed to create decoder thread pool");
 		return threadPoolError;
 	}
+#endif
 
 	//return:
 	//-----------------
@@ -725,7 +743,6 @@ static void* _splv_decoder_thread_pool_thread_entry(void* arg)
 
 	while(1)
 	{
-
 		splv_mutex_lock(&pool->groupStackMutex);
 		while(pool->groupStackSize == 0 && pool->threadsShouldExit == 0)
 			splv_condition_variable_wait(&pool->groupStackEmptyCond, &pool->groupStackMutex);

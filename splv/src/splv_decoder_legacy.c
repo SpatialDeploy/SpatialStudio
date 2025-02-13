@@ -1,10 +1,24 @@
 #include "spatialstudio/splv_decoder_legacy.h"
 
-#define QC_IMPLEMENTATION
-#include "quickcompress.h"
-#include "uint8_stream.hpp"
+#include "spatialstudio/splv_range_coder.h"
 #include "spatialstudio/splv_log.h"
 #include <math.h>
+
+typedef struct SPLVfileHeaderLegacy
+{
+	uint32_t magicWord;
+	uint32_t version;
+
+	uint32_t width;
+	uint32_t height;
+	uint32_t depth;
+
+	float framerate;
+	uint32_t frameCount;
+	float duration;
+	
+	uint64_t frameTablePtr;
+} SPLVfileHeaderLegacy;
 
 //-------------------------------------------//
 
@@ -168,7 +182,7 @@ SPLV_API SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, 
 			while(compressedFrameLen > newScratchBufLen)
 				newScratchBufLen *= 2;
 
-			uint8_t* newScatchBuf = (uint8_t*)SPLV_MALLOC(newScratchBufLen);
+			uint8_t* newScatchBuf = (uint8_t*)SPLV_REALLOC(decoder->inFile.scratchBuf, newScratchBufLen);
 			if(!newScatchBuf)
 			{
 				SPLV_LOG_ERROR("failed to realloc decoder file scratch buf");
@@ -231,19 +245,17 @@ SPLV_API SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, 
 
 	//decompress:
 	//-----------------
-	std::vector<uint8_t> decompressedBuf;
+	splv_buffer_writer_reset(&decoder->decodedFrameWriter);
 
-	Uint8PtrIStream decompressIstream(compressedFrame, (uint32_t)compressedFrameLen);
-	Uint8VectorOStream decompressOstream(decompressedBuf);
-
-	if(qc_decompress(decompressIstream, decompressOstream) != QC_SUCCESS)
+	SPLVerror decodeError = splv_rc_decode(compressedFrameLen, compressedFrame, &decoder->decodedFrameWriter);
+	if(decodeError != SPLV_SUCCESS)
 	{
-		SPLV_LOG_ERROR("error decompressing frame with qc");
-		return SPLV_ERROR_RUNTIME;
+		SPLV_LOG_ERROR("error decompressing frame");
+		return decodeError;
 	}
 
 	SPLVbufferReader decompressedReader;
-	SPLVerror readerError = splv_buffer_reader_create(&decompressedReader, decompressedBuf.data(), decompressedBuf.size());
+	SPLVerror readerError = splv_buffer_reader_create(&decompressedReader, decoder->decodedFrameWriter.buf, decoder->decodedFrameWriter.writePos);
 	if(readerError != SPLV_SUCCESS)
 	{
 		SPLV_LOG_ERROR("failed to create decompressed frame reader");
@@ -291,7 +303,7 @@ SPLV_API SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, 
 
 		if((decoder->scratchBufEncodedMap[idxArr] & (1u << idxBit)) != 0)
 		{
-			decoder->scratchBufBrickPositions[curBrickIdx] = { x, y, z };
+			decoder->scratchBufBrickPositions[curBrickIdx] = (SPLVcoordinate){ x, y, z };
 			frame->map[idx] = curBrickIdx++;
 		}
 		else
@@ -373,6 +385,8 @@ SPLV_API void splv_decoder_legacy_destroy(SPLVdecoderLegacy* decoder)
 	if(decoder->scratchBufBrickPositions)
 		SPLV_FREE(decoder->scratchBufBrickPositions);
 
+	splv_buffer_writer_destroy(&decoder->decodedFrameWriter);
+
 	if(decoder->fromFile)
 	{
 		fclose(decoder->inFile.file);
@@ -386,8 +400,8 @@ static SPLVerror _splv_decoder_legacy_create(SPLVdecoderLegacy* decoder)
 {
 	//read header + validate:
 	//-----------------
-	SPLVfileHeader header;
-	SPLVerror readHeaderError = _splv_decoder_legacy_read(decoder, sizeof(SPLVfileHeader), &header);
+	SPLVfileHeaderLegacy header;
+	SPLVerror readHeaderError = _splv_decoder_legacy_read(decoder, sizeof(SPLVfileHeaderLegacy), &header);
 	if(readHeaderError != SPLV_SUCCESS)
 	{
 		splv_decoder_legacy_destroy(decoder);
@@ -404,7 +418,7 @@ static SPLVerror _splv_decoder_legacy_create(SPLVdecoderLegacy* decoder)
 		return SPLV_ERROR_INVALID_INPUT;
 	}
 
-	if(header.version != SPLV_MAKE_VERSION(0, 0, 1, 0))
+	if(header.version != SPLV_MAKE_VERSION(0, 1, 0, 0))
 	{
 		splv_decoder_legacy_destroy(decoder);
 
@@ -486,6 +500,17 @@ static SPLVerror _splv_decoder_legacy_create(SPLVdecoderLegacy* decoder)
 
 		SPLV_LOG_ERROR("failed to read frame table");
 		return frameTableReadError;
+	}
+
+	//create decoded frame writer:
+	//-----------------
+	SPLVerror frameWriterError = splv_buffer_writer_create(&decoder->decodedFrameWriter, 0);
+	if(frameWriterError != SPLV_SUCCESS)
+	{
+		splv_decoder_legacy_destroy(decoder);
+
+		SPLV_LOG_ERROR("failed to create decoded frame writer");
+		return frameWriterError;	
 	}
 
 	//preallocate space for compressed map + brick positions:
