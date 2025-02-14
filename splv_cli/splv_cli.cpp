@@ -207,7 +207,7 @@ int main(int argc, const char** argv)
 		{
 			if(i + 1 >= (uint32_t)argc)
 			{
-				std::cout << "ERROR: not enough arguments supplied to \"-r\"" << std::endl;
+				std::cout << "ERROR: not enough arguments supplied to \"-b\"" << std::endl;
 				return -1;
 			}
 
@@ -220,7 +220,7 @@ int main(int argc, const char** argv)
 			}
 			catch(std::exception e)
 			{
-				std::cout << "ERROR: invalid maximum region size" << std::endl;
+				std::cout << "ERROR: invalid maximum brick group size" << std::endl;
 				return -1;
 			}
 		}

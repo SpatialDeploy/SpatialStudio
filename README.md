@@ -17,6 +17,7 @@ encoder = splv.SPLVencoder(
 	depth=64,
 	framerate=60.0,
 	gopSize=10,
+	maxBrickGroupSize=512,
 	outputPath="my_spatial.splv"
 )
 
@@ -40,10 +41,11 @@ for i in range(0, 60):
 encoder.finish()
 ```
 
-An encoder is first created with `splv.SPLVencoder(width, height, depth, framerate, outputPath)`. 
+An encoder is first created with `splv.SPLVencoder(width, height, depth, framerate, outputPath, gopSize, maxBrickGroupSize)`. 
 - `xSize`, `ySize`, and `zSize` define the dimensions of the spatial. 
 - `framerate` defines the frames per second. 
 - `gopSize` defines the group-of-pictures size for this encoder. If this is set to some number `n`, then every `n`th frame is an I-frame, and the rest are P-frames.
+- `maxBrickGroupSize` defines the maximum number of bricks that get encoded independently in each frame. Essentially, this controls the parallelizeabliltiy of encoding/decoding. A good default is 512. A value of 0 means that all bricks will be encoded in a single group.
 - `outputPath` defines the path to the output spatial file.
 
 A frame from an `nvdb` is encoded using the `splv.SPLVencoder.encode_nvdb_frame(path, minX, minY, minZ, maxX, maxY, maxZ, lrAxis, udAxis, fbAxis removeNonvisible=False)` function. 
@@ -65,16 +67,17 @@ A frame from a `numpy` array is encoded using the `splv.SPLVencoder.encode_numpy
 Once all frames have been added, you must call `splv.SPLVencoder.finish()` to complete encoding. After `finish()` has been called, the encoder is invalid and no more frames can be added.
 
 Also included in the python bindings are some utility functions:
-- `splv.concat(paths, outPath, gopSize)` concatenates multiple spatials together into one. The dimensions and framerate must all match.
-- `splv.split(path, splitLength, outDir, gopSize)` splits a given spatial into multiple separate spatials, each with the specified duration.
-- `splv.upgrade(path, outPath, gopSize)` upgrades a spatial from the previous version to the current version.
+- `splv.concat(paths, outPath)` concatenates multiple spatials together into one. The dimensions and framerate must all match.
+- `splv.split(path, splitLength, outDir)` splits a given spatial into multiple separate spatials, each with the specified duration.
+- `splv.upgrade(path, outPath, gopSize, maxBrickGroupSize)` upgrades a spatial from the previous version to the current version.
 - `splv.get_vox_max_dimensions(path)` returns the maximum dimensions of the frames in a given `vox` file.
 
 ## Usage (CLI)
-The CLI must be called with `./splv_encoder -d [xSize] [ySize] [zSize] -f [framerate] -g [gopSize] -o [outputPath]`. 
+The CLI must be called with `./splv_encoder -d [xSize] [ySize] [zSize] -f [framerate] -g [gopSize] -b [maxBrickGroupSize] -o [outputPath]`. 
 - `xSize`, `ySize`, and `zSize` define the dimensions of the spatial.
 - `framerate` defines the frames per second. 
 - `gopSize` defines the group-of-pictures size for this encoder. If this is set to some number `n`, then every `n`th frame is an I-frame, and the rest are P-frames.
+- `maxBrickGroupSize` defines the maximum number of bricks that get encoded independently in each frame. Essentially, this controls the parallelizeabliltiy of encoding/decoding. A good default is 512. A value of 0 means that all bricks will be encoded in a single group.
 - `outputPath` defines the path to the output spatial file.
 
 Once in the CLI, an nvdb frame can be encoded be entering `e_nvdb [pathToNVDB]`, where `pathToNVDB` is the path to the `nvdb` you wish to add. Similarly, `e_vox [pathToVox]` adds frames from a `vox` file animation. The bounding box within the source file to encode can be set with the command `b [minX] [minY] [minZ] [maxX] [maxY] [maxZ]`, which sets the bounding box for all subsequent frames. The default is `b 0 0 0 width-1 height-1 depth-1`. For `nvdb`, the axes corresponding to left/right, up/down, and front/back can be set using the `a [lrAxis] [udAxis] [fbAxis]` command, where the axes are distinct and one of `"x"`, `"y"`, or `"z"` (this doesn't affect `vox` files, since they always use the same axes). To enable/disable the automatic removal of non-visible voxels for all subsequent frames, use the command `r [on/off]`. This can increase encoding time, so only use it if your frames have many non-visible voxels.
