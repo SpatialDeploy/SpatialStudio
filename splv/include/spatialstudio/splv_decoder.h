@@ -15,7 +15,7 @@
 //-------------------------------------------//
 
 #ifndef SPLV_DECODER_THREAD_POOL_SIZE
-	#define SPLV_DECODER_THREAD_POOL_SIZE 4
+	#define SPLV_DECODER_THREAD_POOL_SIZE 8
 #endif
 
 //-------------------------------------------//
