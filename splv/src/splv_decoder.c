@@ -6,9 +6,9 @@
 
 //-------------------------------------------//
 
-//#ifndef __EMSCRIPTEN__
+#ifndef __EMSCRIPTEN__
 	#define SPLV_DECODER_MULTITHREADING
-//#endif
+#endif
 
 #define max(a,b) (((a) > (b)) ? (a) : (b))
 #define min(a,b) (((a) < (b)) ? (a) : (b))
