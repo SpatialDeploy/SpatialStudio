@@ -208,6 +208,18 @@ SPLVerror splv_brick_decode(SPLVbufferReader* reader, SPLVbrick* out, uint32_t x
 		return _splv_brick_decode_predictive(reader, out, xMap, yMap, zMap, lastFrame);
 }
 
+uint32_t splv_brick_get_num_voxels(SPLVbrick* brick)
+{
+	uint32_t numVoxels = 0;
+	for(uint32_t i = 0; i < SPLV_BRICK_LEN; i++)
+	{
+		if((brick->bitmap[i >> 5] & (1 << (i & 31))) != 0)
+			numVoxels++;
+	}
+
+	return numVoxels;
+}
+
 //-------------------------------------------//
 
 static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* reader, SPLVbrick* out)

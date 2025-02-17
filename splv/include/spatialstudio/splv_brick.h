@@ -112,4 +112,9 @@ SPLV_API SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap,
  */
 SPLV_API SPLVerror splv_brick_decode(SPLVbufferReader* in, SPLVbrick* out, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame);
 
+/**
+ * returns the number of filled voxels in a brick
+ */
+SPLV_API uint32_t splv_brick_get_num_voxels(SPLVbrick* brick);
+
 #endif //#ifndef SPLV_BRICK_H

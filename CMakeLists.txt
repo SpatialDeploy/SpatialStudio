@@ -63,6 +63,13 @@ if(SPLV_BUILD_CLI)
     target_link_libraries(splv_encoder_cli PRIVATE splv_encoder_lib)
 endif() 
 
+# create benchmarks
+if(SPLV_BUILD_BENCHMARK)
+    add_executable(splv_benchmark "bench/splv_benchmark.cpp")
+
+    target_link_libraries(splv_benchmark PRIVATE splv_encoder_lib)
+endif()
+
 # add python module
 if(SPLV_BUILD_PYTHON_BINDINGS)
     pybind11_add_module(splv_encoder_py "splv_py/py_splv_encoder.cpp")

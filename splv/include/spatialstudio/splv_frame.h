@@ -68,4 +68,14 @@ SPLV_API SPLVerror splv_frame_push_next_brick(SPLVframe* frame, uint32_t x, uint
  */
 SPLV_API SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe* processedFrame);
 
+/**
+ * returns the size, in bytes, of a frame in memory
+ */
+SPLV_API uint64_t splv_frame_get_size(SPLVframe* frame);
+
+/**
+ * returns the total number of voxels in a frame
+ */
+SPLV_API uint64_t splv_frame_get_num_voxels(SPLVframe* frame);
+
 #endif

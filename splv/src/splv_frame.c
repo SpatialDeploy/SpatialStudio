@@ -174,6 +174,32 @@ SPLVerror splv_frame_remove_nonvisible_voxels(SPLVframe* frame, SPLVframe* proce
 	return SPLV_SUCCESS;
 }
 
+uint64_t splv_frame_get_size(SPLVframe* frame)
+{
+	uint64_t mapSize = frame->width * frame->height * frame->depth * sizeof(uint64_t);
+	uint64_t bricksSize = frame->bricksLen * sizeof(SPLVbrick);
+
+	return mapSize + bricksSize;
+}
+
+uint64_t splv_frame_get_num_voxels(SPLVframe* frame)
+{
+	uint64_t numVoxels = 0;
+
+	for(uint32_t z = 0; z < frame->depth ; z++)
+	for(uint32_t y = 0; y < frame->height; y++)
+	for(uint32_t x = 0; x < frame->width ; x++)
+	{
+		uint32_t mapIdx = splv_frame_get_map_idx(frame, x, y, z);
+		uint32_t brickIdx = frame->map[mapIdx];
+
+		if(brickIdx != SPLV_BRICK_IDX_EMPTY)
+			numVoxels += splv_brick_get_num_voxels(&frame->bricks[brickIdx]);
+	}
+
+	return numVoxels;
+}
+
 //-------------------------------------------//
 
 inline uint8_t _splv_frame_get_voxel(SPLVframe* frame, int32_t x, int32_t y, int32_t z)
