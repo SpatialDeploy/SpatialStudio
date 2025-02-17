@@ -90,5 +90,6 @@ endif()
 if(SPLV_BUILD_SHARED)
     add_library(splv_encoder_shared SHARED ${splv_src})
 
+    target_include_directories(splv_encoder_shared PUBLIC "splv/include/")
     target_link_libraries(splv_encoder_shared PUBLIC blosc_static)
 endif()
