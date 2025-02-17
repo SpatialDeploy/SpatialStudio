@@ -65,6 +65,11 @@ void splv_frame_destroy(SPLVframe* frame)
 		SPLV_FREE(frame->bricks);
 }
 
+inline uint32_t splv_frame_get_map_idx(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z)
+{
+	return x + frame->width * (y + frame->height * z);
+}
+
 SPLVbrick* splv_frame_get_next_brick(SPLVframe* frame)
 {
 	return &frame->bricks[frame->bricksLen];
