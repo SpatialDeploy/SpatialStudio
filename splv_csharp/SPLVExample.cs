@@ -10,7 +10,7 @@ using Unity.Collections;
 using UnityEngine;
 using SPLVnative;
 
-public class SPLVExample : MonoBehaviour
+public class SPLVexample : MonoBehaviour
 {
 	private const int EXAMPLE_FRAME_SIZE = 16;
 
@@ -30,7 +30,7 @@ public class SPLVExample : MonoBehaviour
 		encodingParams.maxBrickGroupSize = 512;
 
 		IntPtr encoder = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(SPLVencoder)));
-		SPLVerror encoderError = SPLV.splv_encoder_create(encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, encodingParams, outPath);
+		SPLVerror encoderError = SPLV.EncoderCreate(encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, encodingParams, outPath);
 		if(encoderError != SPLVerror.SUCCESS)
 			throw new Exception($"Failed to create SPLVencoder: ({encoderError})");
 
@@ -44,14 +44,14 @@ public class SPLVExample : MonoBehaviour
 			activeFrames.Add(frame);
 
 			Byte canFree;
-			SPLVerror encodeError = SPLV.splv_encoder_encode_frame(encoder, frame, out canFree);
+			SPLVerror encodeError = SPLV.EncoderEncodeFrame(encoder, frame, out canFree);
 			if(encodeError != SPLVerror.SUCCESS)
 				throw new Exception($"Failed to encode frame: ({encodeError})");
 
 			if(canFree != 0)
 			{
 				foreach(var activeFrame in activeFrames)
-					SPLV.splv_frame_destroy(activeFrame);
+					SPLV.FrameDestroy(activeFrame);
 
 				activeFrames.Clear();
 			}
@@ -59,12 +59,12 @@ public class SPLVExample : MonoBehaviour
 
 		//finish encoding, free remaining active frames:
 		//---------------
-		SPLVerror finishError = SPLV.splv_encoder_finish(encoder);
+		SPLVerror finishError = SPLV.EncoderFinish(encoder);
 		if(finishError != SPLVerror.SUCCESS)
 			throw new Exception($"Failed to finish encoding: ({finishError})");
 
 		foreach(var activeFrame in activeFrames)
-			SPLV.splv_frame_destroy(activeFrame);
+			SPLV.FrameDestroy(activeFrame);
 
 		activeFrames.Clear();
 	}

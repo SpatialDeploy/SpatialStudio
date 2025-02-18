@@ -50,7 +50,7 @@ public struct SPLVdynArrayUint64
 [StructLayout(LayoutKind.Sequential)]
 public struct SPLVframe
 {
-    public const UInt32 BRICK_IDX_EMPTY = UInt32.MaxValue;
+	public const UInt32 BRICK_IDX_EMPTY = UInt32.MaxValue;
 
 	public UInt32 width;
 	public UInt32 height;
@@ -102,56 +102,56 @@ public class SPLV
 	//-------------------------------------------//
 	//from splv_brick.h
 
-	[DllImport(LibraryName)]
-	public static extern void splv_brick_set_voxel_filled(IntPtr brick, UInt32 x, UInt32 y, UInt32 z, Byte colorR, Byte colorG, Byte colorB);
+	[DllImport(LibraryName, EntryPoint = "splv_brick_set_voxel_filled", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void BrickSetVoxelFilled(IntPtr brick, UInt32 x, UInt32 y, UInt32 z, Byte colorR, Byte colorG, Byte colorB);
 
-	[DllImport(LibraryName)]
-	public static extern void splv_brick_set_voxel_empty(IntPtr brick, UInt32 x, UInt32 y, UInt32 z);
+	[DllImport(LibraryName, EntryPoint = "splv_brick_set_voxel_empty", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void BrickSetVoxelEmpty(IntPtr brick, UInt32 x, UInt32 y, UInt32 z);
 
-	[DllImport(LibraryName)]
-	public static extern Byte splv_brick_get_voxel(IntPtr brick, UInt32 x, UInt32 y, UInt32 z);
+	[DllImport(LibraryName, EntryPoint = "splv_brick_get_voxel", CallingConvention = CallingConvention.Cdecl)]
+	public static extern Byte BrickGetVoxel(IntPtr brick, UInt32 x, UInt32 y, UInt32 z);
 
-	[DllImport(LibraryName)]
-	public static extern Byte splv_brick_get_voxel_color(IntPtr brick, UInt32 x, UInt32 y, UInt32 z, out Byte colorR, out Byte colorG, out Byte colorB);
+	[DllImport(LibraryName, EntryPoint = "splv_brick_get_voxel_color", CallingConvention = CallingConvention.Cdecl)]
+	public static extern Byte BrickGetVoxelColor(IntPtr brick, UInt32 x, UInt32 y, UInt32 z, out Byte colorR, out Byte colorG, out Byte colorB);
 
-	[DllImport(LibraryName)]
-	public static extern void splv_brick_clear(IntPtr brick);
+	[DllImport(LibraryName, EntryPoint = "splv_brick_clear", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void BrickClear(IntPtr brick);
 
 	//-------------------------------------------//
 	//from splv_frame.h
 
-	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_frame_create(IntPtr frame, UInt32 width, UInt32 height, UInt32 depth, UInt32 numBricksInitial);
+	[DllImport(LibraryName, EntryPoint = "splv_frame_create", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror FrameCreate(IntPtr frame, UInt32 width, UInt32 height, UInt32 depth, UInt32 numBricksInitial);
 
-	[DllImport(LibraryName)]
-	public static extern void splv_frame_destroy(IntPtr frame);
+	[DllImport(LibraryName, EntryPoint = "splv_frame_destroy", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void FrameDestroy(IntPtr frame);
 
-	[DllImport(LibraryName)]
-	public static extern UInt32 splv_frame_get_map_idx(IntPtr frame, UInt32 x, UInt32 y, UInt32 z);
+	[DllImport(LibraryName, EntryPoint = "splv_frame_get_map_idx", CallingConvention = CallingConvention.Cdecl)]
+	public static extern UInt32 FrameGetMapIdx(IntPtr frame, UInt32 x, UInt32 y, UInt32 z);
 
-	[DllImport(LibraryName)]
-	public static extern IntPtr splv_frame_get_next_brick(IntPtr frame);
+	[DllImport(LibraryName, EntryPoint = "splv_frame_get_next_brick", CallingConvention = CallingConvention.Cdecl)]
+	public static extern IntPtr FrameGetNextBrick(IntPtr frame);
 
-	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_frame_push_next_brick(IntPtr frame, UInt32 x, UInt32 y, UInt32 z);
+	[DllImport(LibraryName, EntryPoint = "splv_frame_push_next_brick", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror FramePushNextBrick(IntPtr frame, UInt32 x, UInt32 y, UInt32 z);
 
-	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_frame_remove_nonvisible_voxels(IntPtr frame, IntPtr processedFrame);
-
+	[DllImport(LibraryName, EntryPoint = "splv_frame_remove_nonvisible_voxels", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror FrameRemoveNonvisibleVoxels(IntPtr frame, IntPtr processedFrame);
+	
 	//-------------------------------------------//
 	//from splv_encoder.h
 
-	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_encoder_create(IntPtr encoder, UInt32 width, UInt32 height, UInt32 depth, float framerate, SPLVencodingParams encodingParams, IntPtr outPath);
+	[DllImport(LibraryName, EntryPoint = "splv_encoder_create", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror EncoderCreate(IntPtr encoder, UInt32 width, UInt32 height, UInt32 depth, float framerate, SPLVencodingParams encodingParams, IntPtr outPath);
 
-	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_encoder_encode_frame(IntPtr encoder, IntPtr frame, out Byte canFree);
+	[DllImport(LibraryName, EntryPoint = "splv_encoder_encode_frame", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror EncoderEncodeFrame(IntPtr encoder, IntPtr frame, out Byte canFree);
 
-	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_encoder_finish(IntPtr encoder);
+	[DllImport(LibraryName, EntryPoint = "splv_encoder_finish", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror EncoderFinish(IntPtr encoder);
 
-	[DllImport(LibraryName)]
-	public static extern void splv_encoder_abort(IntPtr encoder);
+	[DllImport(LibraryName, EntryPoint = "splv_encoder_abort", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void EncoderAbort(IntPtr encoder);
 }
 
 } //namespace SpatialStudioNative

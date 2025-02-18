@@ -44,7 +44,7 @@ public static class SPLVutils
 		UInt32 depthMap  = sizes[(Int32)fbAxis] / SPLVbrick.SIZE;
 
 		IntPtr frame = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(SPLVframe)));
-		SPLVerror frameError = SPLV.splv_frame_create(frame, widthMap, heightMap, depthMap, 0);
+		SPLVerror frameError = SPLV.FrameCreate(frame, widthMap, heightMap, depthMap, 0);
 		if(frameError != SPLVerror.SUCCESS)
 			throw new Exception($"Error creating SPLV frame: ({frameError})");
 
@@ -84,15 +84,15 @@ public static class SPLVutils
             UInt32 yBrick = yWrite % (UInt32)SPLVbrick.SIZE;
             UInt32 zBrick = zWrite % (UInt32)SPLVbrick.SIZE;
 
-            UInt32 mapIdx = SPLV.splv_frame_get_map_idx(frame, xMap, yMap, zMap);
+            UInt32 mapIdx = SPLV.FrameGetMapIdx(frame, xMap, yMap, zMap);
             
             UInt32 currentBrickIdx = (UInt32)Marshal.ReadInt32(frameStruct.map + (Int32)(mapIdx * sizeof(UInt32)));
             if(currentBrickIdx == SPLVframe.BRICK_IDX_EMPTY)
             {
-                IntPtr newBrickPtr = SPLV.splv_frame_get_next_brick(frame);
-                SPLV.splv_brick_clear(newBrickPtr);
+                IntPtr newBrickPtr = SPLV.FrameGetNextBrick(frame);
+                SPLV.BrickClear(newBrickPtr);
 
-                SPLVerror pushError = SPLV.splv_frame_push_next_brick(frame, xMap, yMap, zMap);
+                SPLVerror pushError = SPLV.FramePushNextBrick(frame, xMap, yMap, zMap);
                 if(pushError != SPLVerror.SUCCESS)
                     throw new Exception($"Failed to push brick to frame: ({pushError})");
 
@@ -103,7 +103,7 @@ public static class SPLVutils
 			}
 
             IntPtr brickPtr = frameStruct.bricks + (Int32)(currentBrickIdx * Marshal.SizeOf<SPLVbrick>());
-            SPLV.splv_brick_set_voxel_filled(brickPtr, xBrick, yBrick, zBrick, r, g, b);
+            SPLV.BrickSetVoxelFilled(brickPtr, xBrick, yBrick, zBrick, r, g, b);
         }
 
         return frame;
