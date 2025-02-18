@@ -25,6 +25,48 @@ static inline void _splv_brick_diff_encode(splv_bool_t add, uint32_t x, uint32_t
 
 //-------------------------------------------//
 
+void splv_brick_set_voxel_filled(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t colorR, uint8_t colorG, uint8_t colorB)
+{
+	SPLV_ASSERT(x < SPLV_BRICK_SIZE && y < SPLV_BRICK_SIZE && z < SPLV_BRICK_SIZE, "brick coordinates out of bounds");
+
+	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);	
+	brick->bitmap[idx >> 5] |= 1 << (idx & 31);
+
+	uint32_t color = (colorR << 24) | (colorG << 16) | (colorB << 8) | 255;
+	brick->color[idx] = color;
+}
+
+void splv_brick_set_voxel_empty(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z)
+{
+	SPLV_ASSERT(x < SPLV_BRICK_SIZE && y < SPLV_BRICK_SIZE && z < SPLV_BRICK_SIZE, "brick coordinates out of bounds");
+
+	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);
+	
+	brick->bitmap[idx >> 5] &= ~(1 << (idx & 31));
+}
+
+splv_bool_t splv_brick_get_voxel(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z)
+{
+	SPLV_ASSERT(x < SPLV_BRICK_SIZE && y < SPLV_BRICK_SIZE && z < SPLV_BRICK_SIZE, "brick coordinates out of bounds");
+
+	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);
+	return (brick->bitmap[idx >> 5] & (1 << (idx & 31))) != 0;
+}
+
+splv_bool_t splv_brick_get_voxel_color(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t* colorR, uint8_t* colorG, uint8_t* colorB)
+{
+	SPLV_ASSERT(x < SPLV_BRICK_SIZE && y < SPLV_BRICK_SIZE && z < SPLV_BRICK_SIZE, "brick coordinates out of bounds");
+
+	uint32_t idx = x | (y << SPLV_BRICK_SIZE_LOG_2) | (z << SPLV_BRICK_SIZE_2_LOG_2);
+
+	uint32_t color = brick->color[idx];
+	*colorR = color >> 24;
+	*colorG = (color >> 16) & 0xFF;
+	*colorB = (color >> 8 ) & 0xFF;
+
+	return (brick->bitmap[idx >> 5] & (1 << (idx & 31))) != 0;
+}
+
 void splv_brick_clear(SPLVbrick* brick)
 {
 	memset(brick->bitmap, 0, sizeof(brick->bitmap));
