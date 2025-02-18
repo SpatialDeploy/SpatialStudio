@@ -39,22 +39,22 @@ typedef struct SPLVbrick
 /**
  * sets a given voxel to be filled, having a given color
  */
-SPLV_API inline void splv_brick_set_voxel_filled(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t colorR, uint8_t colorG, uint8_t colorB);
+SPLV_API void splv_brick_set_voxel_filled(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t colorR, uint8_t colorG, uint8_t colorB);
 
 /**
  * sets a given voxel to be empty
  */
-SPLV_API inline void splv_brick_set_voxel_empty(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z);
+SPLV_API void splv_brick_set_voxel_empty(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z);
 
 /**
  * returns whether the voxel at the given location is filled
  */
-SPLV_API inline splv_bool_t splv_brick_get_voxel(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z);
+SPLV_API splv_bool_t splv_brick_get_voxel(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z);
 
 /**
  * returns whether the voxel at the given location is filled, as well as its color
  */
-SPLV_API inline splv_bool_t splv_brick_get_voxel_color(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t* colorR, uint8_t* colorG, uint8_t* colorB);
+SPLV_API splv_bool_t splv_brick_get_voxel_color(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t* colorR, uint8_t* colorG, uint8_t* colorB);
 
 /**
  * clears a brick to be completely empty

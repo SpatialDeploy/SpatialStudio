@@ -45,12 +45,12 @@ SPLV_API SPLVerror splv_buffer_reader_create(SPLVbufferReader* reader, uint8_t* 
 /**
  * reads from a buffer reader
  */
-SPLV_API inline SPLVerror splv_buffer_reader_read(SPLVbufferReader* reader, uint64_t size, void* dst);
+SPLV_API SPLVerror splv_buffer_reader_read(SPLVbufferReader* reader, uint64_t size, void* dst);
 
 /**
  * sets the read position for a buffer reader
  */
-SPLV_API inline SPLVerror splv_buffer_reader_seek(SPLVbufferReader* reader, uint64_t pos);
+SPLV_API SPLVerror splv_buffer_reader_seek(SPLVbufferReader* reader, uint64_t pos);
 
 //-------------------------------------------//
 
@@ -62,21 +62,21 @@ SPLV_API SPLVerror splv_buffer_writer_create(SPLVbufferWriter* writer, uint64_t 
 /**
  * destroys a buffer writer, frees resources allocated from splv_buffer_writer_create()
  */
-SPLV_API inline void splv_buffer_writer_destroy(SPLVbufferWriter* writer);
+SPLV_API void splv_buffer_writer_destroy(SPLVbufferWriter* writer);
 
 /**
  * writes to a buffer writer
  */
-SPLV_API inline SPLVerror splv_buffer_writer_write(SPLVbufferWriter* writer, uint64_t size, void* src);
+SPLV_API SPLVerror splv_buffer_writer_write(SPLVbufferWriter* writer, uint64_t size, void* src);
 
 /**
  * writes a single byte to a writer
  */
-SPLV_API inline SPLVerror splv_buffer_writer_put(SPLVbufferWriter* writer, uint8_t c);
+SPLV_API SPLVerror splv_buffer_writer_put(SPLVbufferWriter* writer, uint8_t c);
 
 /**
  * reset's a writers write position without freeing its memory
  */
-SPLV_API inline void splv_buffer_writer_reset(SPLVbufferWriter* writer);
+SPLV_API void splv_buffer_writer_reset(SPLVbufferWriter* writer);
 
 #endif //#ifndef SPLV_BUFFER_IO_H

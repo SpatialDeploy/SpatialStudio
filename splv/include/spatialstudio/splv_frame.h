@@ -48,7 +48,7 @@ SPLV_API void splv_frame_destroy(SPLVframe* frame);
 /**
  * gets the index into frame->map cooresponding to the given position
  */
-SPLV_API inline uint32_t splv_frame_get_map_idx(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z);
+SPLV_API uint32_t splv_frame_get_map_idx(SPLVframe* frame, uint32_t x, uint32_t y, uint32_t z);
 
 /**
  * returns a pointer to a fresh brick. does not add this brick to the map, useful as a "scratch buffer"
