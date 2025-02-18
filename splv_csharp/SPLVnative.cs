@@ -1,12 +1,15 @@
-/* SPLV.cs
+/* SPLVnative.cs
  * 
- * contains all bindings from the SpatialStudio C++ library
+ * contains all bindings from the SPLV C++ library
  */
 
 using System;
 using System.Runtime.InteropServices;
 
 //-------------------------------------------//
+
+namespace SPLVnative
+{
 
 public enum SPLVerror : Int32
 {
@@ -31,16 +34,17 @@ public struct SPLVbrick
 	[MarshalAs(UnmanagedType.ByValArray, SizeConst = (int)LEN / 32)]
 	public UInt32[] bitmap;
 	
-	[MarshalAs(UnmanagedType.ByValArray, SizeConst = (int)LEN * 3)]
-	public byte[] color;
+	[MarshalAs(UnmanagedType.ByValArray, SizeConst = (int)LEN)]
+	public UInt32[] color;
 }
 
 [StructLayout(LayoutKind.Sequential)]
 public struct SPLVdynArrayUint64
 {
-	public UInt64 len;
 	public UInt64 cap;
 	public IntPtr arr;
+
+	public UInt64 len;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -52,9 +56,17 @@ public struct SPLVframe
 	public UInt32 height;
 	public UInt32 depth;
 	public IntPtr map;
+
 	public UInt32 bricksLen;
 	public UInt32 bricksCap;
 	public IntPtr bricks;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct SPLVencodingParams
+{
+	public UInt32 gopSize;
+	public UInt32 maxBrickGroupSize;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -63,12 +75,22 @@ public struct SPLVencoder
 	public UInt32 width;
 	public UInt32 height;
 	public UInt32 depth;
+
 	public float framerate;
 	public UInt32 frameCount;
 	public SPLVdynArrayUint64 frameTable;
-	public UInt32 gopSize;
-	public IntPtr lastFrame;
+
+	public SPLVencodingParams encodingParams;
+
+	public SPLVframe lastFrame;
+
 	public IntPtr outFile;
+
+	public UInt64 mapBitmapLen;
+	public IntPtr scratchBufMapBitmap;
+	public IntPtr scratchBufBricks;
+	public IntPtr scratchBufBrickPositions;
+	public IntPtr scratchBufBrickGroupWriters;
 }
 
 //-------------------------------------------//
@@ -99,7 +121,7 @@ public class SPLV
 	//from splv_frame.h
 
 	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_frame_create(IntPtr frame, UInt32 width, UInt32 height, UInt32 depth);
+	public static extern SPLVerror splv_frame_create(IntPtr frame, UInt32 width, UInt32 height, UInt32 depth, UInt32 numBricksInitial);
 
 	[DllImport(LibraryName)]
 	public static extern void splv_frame_destroy(IntPtr frame);
@@ -120,7 +142,7 @@ public class SPLV
 	//from splv_encoder.h
 
 	[DllImport(LibraryName)]
-	public static extern SPLVerror splv_encoder_create(IntPtr encoder, UInt32 width, UInt32 height, UInt32 depth, float framerate, UInt32 gopSize, IntPtr outPath);
+	public static extern SPLVerror splv_encoder_create(IntPtr encoder, UInt32 width, UInt32 height, UInt32 depth, float framerate, SPLVencodingParams encodingParams, IntPtr outPath);
 
 	[DllImport(LibraryName)]
 	public static extern SPLVerror splv_encoder_encode_frame(IntPtr encoder, IntPtr frame, out Byte canFree);
@@ -131,3 +153,5 @@ public class SPLV
 	[DllImport(LibraryName)]
 	public static extern void splv_encoder_abort(IntPtr encoder);
 }
+
+} //namespace SpatialStudioNative

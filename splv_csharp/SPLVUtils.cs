@@ -1,10 +1,11 @@
-/* SPLVUtils.cs
+/* SPLVutils.cs
  *
  * contains utility functions for using SpatialStudio with C#
  */
 
 using System;
 using System.Runtime.InteropServices;
+using SPLVnative;
 using Unity.Collections;
 using UnityEngine;
 
@@ -19,7 +20,7 @@ public enum SPLVaxis : Int32
 
 //-------------------------------------------//
 
-public static class SPLVUtils
+public static class SPLVutils
 {
 	public static IntPtr NativeArrayToSPLVframe(NativeArray<Vector4> colorData, Int32 xSize, Int32 ySize, Int32 zSize,
 	                                            SPLVaxis lrAxis, SPLVaxis udAxis, SPLVaxis fbAxis)
@@ -42,8 +43,8 @@ public static class SPLVUtils
 		UInt32 heightMap = sizes[(Int32)udAxis] / SPLVbrick.SIZE;
 		UInt32 depthMap  = sizes[(Int32)fbAxis] / SPLVbrick.SIZE;
 
-		IntPtr frame = Marshal.AllocHGlobal(sizeof(SPLVframe));
-		SPLVerror frameError = SpatialStudio.splv_frame_create(frame, widthMap, heightMap, depthMap);
+		IntPtr frame = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(SPLVframe)));
+		SPLVerror frameError = SPLV.splv_frame_create(frame, widthMap, heightMap, depthMap, 0);
 		if(frameError != SPLVerror.SUCCESS)
 			throw new Exception($"Error creating SPLV frame: ({frameError})");
 
@@ -83,15 +84,15 @@ public static class SPLVUtils
             UInt32 yBrick = yWrite % (UInt32)SPLVbrick.SIZE;
             UInt32 zBrick = zWrite % (UInt32)SPLVbrick.SIZE;
 
-            UInt32 mapIdx = SpatialStudio.splv_frame_get_map_idx(frame, xMap, yMap, zMap);
+            UInt32 mapIdx = SPLV.splv_frame_get_map_idx(frame, xMap, yMap, zMap);
             
             UInt32 currentBrickIdx = (UInt32)Marshal.ReadInt32(frameStruct.map + (Int32)(mapIdx * sizeof(UInt32)));
             if(currentBrickIdx == SPLVframe.BRICK_IDX_EMPTY)
             {
-                IntPtr newBrickPtr = SpatialStudio.splv_frame_get_next_brick(frame);
-                SpatialStudio.splv_brick_clear(newBrickPtr);
+                IntPtr newBrickPtr = SPLV.splv_frame_get_next_brick(frame);
+                SPLV.splv_brick_clear(newBrickPtr);
 
-                SPLVerror pushError = SpatialStudio.splv_frame_push_next_brick(frame, xMap, yMap, zMap);
+                SPLVerror pushError = SPLV.splv_frame_push_next_brick(frame, xMap, yMap, zMap);
                 if(pushError != SPLVerror.SUCCESS)
                     throw new Exception($"Failed to push brick to frame: ({pushError})");
 
@@ -102,7 +103,7 @@ public static class SPLVUtils
 			}
 
             IntPtr brickPtr = frameStruct.bricks + (Int32)(currentBrickIdx * Marshal.SizeOf<SPLVbrick>());
-            SpatialStudio.splv_brick_set_voxel_filled(brickPtr, xBrick, yBrick, zBrick, r, g, b);
+            SPLV.splv_brick_set_voxel_filled(brickPtr, xBrick, yBrick, zBrick, r, g, b);
         }
 
         return frame;

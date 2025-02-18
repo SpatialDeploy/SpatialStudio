@@ -63,19 +63,59 @@ typedef void* (*SPLVthreadFunc)(void*);
 
 //-------------------------------------------//
 
-SPLVerror splv_thread_create(SPLVthread* thread, SPLVthreadFunc func, void* arg);
-SPLVerror splv_thread_detach(SPLVthread* thread);
-SPLVerror splv_thread_join(SPLVthread* thread, void** retval);
+/**
+ * creates a thread
+ */
+SPLV_NOMANGLE SPLVerror splv_thread_create(SPLVthread* thread, SPLVthreadFunc func, void* arg);
 
-SPLVerror splv_mutex_init(SPLVmutex* mutex);
-SPLVerror splv_mutex_destroy(SPLVmutex* mutex);
-SPLVerror splv_mutex_lock(SPLVmutex* mutex);
-SPLVerror splv_mutex_unlock(SPLVmutex* mutex);
+/**
+ * joins with a thread
+ */
+SPLV_NOMANGLE SPLVerror splv_thread_join(SPLVthread* thread, void** retval);
 
-SPLVerror splv_condition_variable_init(SPLVconditionVariable* cond);
-SPLVerror splv_condition_variable_destroy(SPLVconditionVariable* cond);
-SPLVerror splv_condition_variable_wait(SPLVconditionVariable* cond, SPLVmutex* mutex);
-SPLVerror splv_condition_variable_signal_one(SPLVconditionVariable* cond);
-SPLVerror splv_condition_variable_signal_all(SPLVconditionVariable* cond);
+/**
+ * creates a mutex
+ */
+SPLV_NOMANGLE SPLVerror splv_mutex_init(SPLVmutex* mutex);
+
+/**
+ * destroys a mutex
+ */
+SPLV_NOMANGLE SPLVerror splv_mutex_destroy(SPLVmutex* mutex);
+
+/**
+ * locks a mutex
+ */
+SPLV_NOMANGLE SPLVerror splv_mutex_lock(SPLVmutex* mutex);
+
+/**
+ * unlocks a mutex
+ */
+SPLV_NOMANGLE SPLVerror splv_mutex_unlock(SPLVmutex* mutex);
+
+/**
+ * initializes a condition variable
+ */
+SPLV_NOMANGLE SPLVerror splv_condition_variable_init(SPLVconditionVariable* cond);
+
+/**
+ * destroys a condition variable
+ */
+SPLV_NOMANGLE SPLVerror splv_condition_variable_destroy(SPLVconditionVariable* cond);
+
+/**
+ * waits on a condition variable
+ */
+SPLV_NOMANGLE SPLVerror splv_condition_variable_wait(SPLVconditionVariable* cond, SPLVmutex* mutex);
+
+/**
+ * wakes a single thread waiting on a condition variable
+ */
+SPLV_NOMANGLE SPLVerror splv_condition_variable_signal_one(SPLVconditionVariable* cond);
+
+/**
+ * wakes all threads waiting on a condition variable
+ */
+SPLV_NOMANGLE SPLVerror splv_condition_variable_signal_all(SPLVconditionVariable* cond);
 
 #endif //#ifndef SPLV_THREADING_H

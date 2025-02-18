@@ -1,4 +1,4 @@
-/* SPLVExample.cs
+/* SPLVexample.cs
  *
  * contains example code to encode a basic SPlV
  */
@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Collections;
 using UnityEngine;
+using SPLVnative;
 
 public class SPLVExample : MonoBehaviour
 {
@@ -24,8 +25,12 @@ public class SPLVExample : MonoBehaviour
 		//---------------
 		IntPtr outPath = Marshal.StringToHGlobalAnsi("C:\\Users\\danie\\Downloads\\test.splv");
 
-		IntPtr encoder = Marshal.AllocHGlobal(sizeof(SPLVencoder));
-		SPLVerror encoderError = SPLV.splv_encoder_create(encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, 1, outPath);
+		SPLVencodingParams encodingParams;
+		encodingParams.gopSize = 10;
+		encodingParams.maxBrickGroupSize = 512;
+
+		IntPtr encoder = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(SPLVencoder)));
+		SPLVerror encoderError = SPLV.splv_encoder_create(encoder, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, EXAMPLE_FRAME_SIZE, 1.0f, encodingParams, outPath);
 		if(encoderError != SPLVerror.SUCCESS)
 			throw new Exception($"Failed to create SPLVencoder: ({encoderError})");
 
@@ -79,7 +84,7 @@ public class SPLVExample : MonoBehaviour
 		int z = EXAMPLE_FRAME_SIZE / 2;
 		arr[x + EXAMPLE_FRAME_SIZE * (y + EXAMPLE_FRAME_SIZE * z)] = new Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 
-		IntPtr frame = SPLVUtils.NativeArrayToSPLVframe(
+		IntPtr frame = SPLVutils.NativeArrayToSPLVframe(
 			arr, 
 			EXAMPLE_FRAME_SIZE, 
 			EXAMPLE_FRAME_SIZE,

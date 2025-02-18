@@ -37,6 +37,7 @@ endif()
 
 # set source files
 set(splv_src
+    "splv/src/splv_error.c"
     "splv/src/splv_brick.c"
     "splv/src/splv_encoder.c"
     "splv/src/splv_decoder.c"

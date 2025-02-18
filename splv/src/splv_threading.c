@@ -1,5 +1,7 @@
 #include "spatialstudio/splv_threading.h"
 
+//-------------------------------------------//
+
 SPLVerror splv_thread_create(SPLVthread* thread, SPLVthreadFunc func, void* arg)
 {
 #ifdef _WIN32
@@ -7,15 +9,6 @@ SPLVerror splv_thread_create(SPLVthread* thread, SPLVthreadFunc func, void* arg)
 	return (thread->handle == NULL) ? SPLV_ERROR_THREADING : SPLV_SUCCESS;
 #else
 	return (pthread_create(&thread->handle, NULL, func, arg) == 0) ? SPLV_SUCCESS : SPLV_ERROR_THREADING;
-#endif
-}
-
-SPLVerror splv_thread_detach(SPLVthread* thread)
-{
-#ifdef _WIN32
-	return CloseHandle(thread->handle) ? SPLV_SUCCESS : SPLV_ERROR_THREADING;
-#else
-	return (pthread_detach(thread->handle) == 0) ? SPLV_SUCCESS : SPLV_ERROR_THREADING;
 #endif
 }
 
