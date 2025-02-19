@@ -23,6 +23,8 @@ static SPLVerror _splv_brick_decode_predictive(SPLVbufferReader* reader, SPLVbri
 static inline uint8_t _splv_brick_geom_diff_position_decode(uint8_t* buf, uint32_t* bitIdx);
 static inline void _splv_brick_diff_encode(splv_bool_t add, uint32_t x, uint32_t y, uint32_t z, uint8_t* buf, uint32_t* bitIdx);
 
+static int _splv_color_compare(const void* c1, const void* c2);
+
 //-------------------------------------------//
 
 void splv_brick_set_voxel_filled(SPLVbrick* brick, uint32_t x, uint32_t y, uint32_t z, uint8_t colorR, uint8_t colorG, uint8_t colorB)
@@ -92,6 +94,11 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out)
 	//iterate over brick, perform RLE on bitmap and add colors:
 	//---------------
 
+	//for finding medians
+	uint8_t redChannels[SPLV_BRICK_LEN];
+	uint8_t greenChannels[SPLV_BRICK_LEN];
+	uint8_t blueChannels[SPLV_BRICK_LEN];
+
 	//we do RLE in morton order, we MUST make sure to read it back in the same order
 	for(uint32_t i = 0; i < SPLV_BRICK_LEN; i++)
 	{
@@ -117,15 +124,41 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out)
 		if(filled)
 		{
 			uint32_t color = brick->color[idx];
-			colorBytes[numColorBytes++] = (uint8_t)(color >> 24);
-			colorBytes[numColorBytes++] = (uint8_t)((color >> 16) & 0xFF);
-			colorBytes[numColorBytes++] = (uint8_t)((color >> 8 ) & 0xFF);
+			uint8_t r = (uint8_t)(color >> 24);
+			uint8_t g = (uint8_t)((color >> 16) & 0xFF);
+			uint8_t b = (uint8_t)((color >> 8 ) & 0xFF);
+
+			colorBytes[numColorBytes++] = r;
+			colorBytes[numColorBytes++] = g;
+			colorBytes[numColorBytes++] = b;
+
+			redChannels  [voxelCount] = r;
+			greenChannels[voxelCount] = g;
+			blueChannels [voxelCount] = b;
 
 			voxelCount++;
 		}
 	}
 
 	bitmapBytes[numBitmapBytes++] = curBitmapByte;
+
+	//offset each color by median:
+	//---------------
+	qsort(redChannels, voxelCount, sizeof(uint8_t), _splv_color_compare);
+	qsort(greenChannels, voxelCount, sizeof(uint8_t), _splv_color_compare);
+	qsort(blueChannels, voxelCount, sizeof(uint8_t), _splv_color_compare);
+
+	uint8_t medianColor[3];
+	medianColor[0] = redChannels[voxelCount / 2];
+	medianColor[1] = greenChannels[voxelCount / 2];
+	medianColor[2] = blueChannels[voxelCount / 2];
+
+	for(uint32_t i = 0; i < voxelCount; i++)
+	{
+		colorBytes[i * 3 + 0] -= medianColor[0];
+		colorBytes[i * 3 + 1] -= medianColor[1];
+		colorBytes[i * 3 + 2] -= medianColor[2];
+	}
 
 	//write:
 	//---------------
@@ -134,6 +167,7 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out)
 
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint32_t), &voxelCount));
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numBitmapBytes * sizeof(uint8_t), bitmapBytes));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, 3 * sizeof(uint8_t), medianColor));
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numColorBytes * sizeof(uint8_t), colorBytes));
 
 	return SPLV_SUCCESS;
@@ -155,6 +189,8 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 	//TODO: optimize with xor and bitcounting
 
 	uint32_t numGeomDiff = 0;
+	uint32_t voxelCount = 0;
+
 	for(uint32_t z = 0; z < SPLV_BRICK_SIZE; z++)
 	for(uint32_t y = 0; y < SPLV_BRICK_SIZE; y++)
 	for(uint32_t x = 0; x < SPLV_BRICK_SIZE; x++)
@@ -164,13 +200,16 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 
 		if(filled != wasFilled)
 			numGeomDiff++;
+
+		if(filled)
+			voxelCount++;
 	}
 
 	//determine if we should encode as I-frame:
 	//---------------
 
-	//TODO: pick a good value for this
-	if(numGeomDiff > 64)
+	//TODO: finetune this
+	if(numGeomDiff >= voxelCount / 2)
 		return splv_brick_encode_intra(brick, out);
 
 	//encode diffs in geom + color:
@@ -229,10 +268,8 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 	//---------------
 	uint8_t encodingType = (uint8_t)SPLV_BRICK_ENCODING_TYPE_P;
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint8_t), &encodingType));
-	
-	uint8_t numGeomDiffEncoded = (uint8_t)numGeomDiff;
-	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint8_t), &numGeomDiffEncoded));
 
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint32_t), &numGeomDiff));
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, (numGeomDiffBits + 7) / 8, geomDiffBytes));
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numColorBytes, colorBytes));
 
@@ -246,8 +283,13 @@ SPLVerror splv_brick_decode(SPLVbufferReader* reader, SPLVbrick* out, uint32_t x
 
 	if((SPLVbrickEncodingType)encodingType == SPLV_BRICK_ENCODING_TYPE_I)
 		return _splv_brick_decode_intra(reader, out);
-	else
+	else if((SPLVbrickEncodingType)encodingType == SPLV_BRICK_ENCODING_TYPE_P)
 		return _splv_brick_decode_predictive(reader, out, xMap, yMap, zMap, lastFrame);
+	else
+	{
+		SPLV_LOG_ERROR("invalid brick encoding type");
+		return SPLV_ERROR_INVALID_INPUT;
+	}
 }
 
 uint32_t splv_brick_get_num_voxels(SPLVbrick* brick)
@@ -309,6 +351,11 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* reader, SPLVbrick* o
 		return SPLV_ERROR_INVALID_INPUT;
 	}
 
+	//read median color:
+	//-----------------
+	uint8_t medianColor[3];
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(reader, 3 * sizeof(uint8_t), medianColor));
+
 	//loop over every voxel, add to color buffer if present
 	//-----------------
 	uint32_t readVoxels = 0;
@@ -323,6 +370,10 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* reader, SPLVbrick* o
 		{
 			uint8_t rgb[3];
 			SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(reader, 3 * sizeof(uint8_t), rgb));
+
+			rgb[0] += medianColor[0];
+			rgb[1] += medianColor[1];
+			rgb[2] += medianColor[2];
 
 			uint32_t packedColor = (rgb[0] << 24) | (rgb[1] << 16) | (rgb[2] << 8) | 255;
 			out->color[idx] = packedColor;
@@ -344,8 +395,8 @@ static SPLVerror _splv_brick_decode_predictive(SPLVbufferReader* reader, SPLVbri
 {
 	//read geom diff
 	//-----------------
-	uint8_t numGeomDiff;
-	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(reader, sizeof(uint8_t), &numGeomDiff));
+	uint32_t numGeomDiff;
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(reader, sizeof(uint32_t), &numGeomDiff));
 
 	uint8_t geomDiffEncoded[(SPLV_BRICK_GEOM_DIFF_SIZE * SPLV_BRICK_LEN + 7) / 8];
 	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(reader, (SPLV_BRICK_GEOM_DIFF_SIZE * (uint32_t)numGeomDiff + 7) / 8, geomDiffEncoded));
@@ -441,4 +492,18 @@ static inline uint8_t _splv_brick_geom_diff_position_decode(uint8_t* buf, uint32
 	}
 
 	return pos;
+}
+
+//-------------------------------------------//
+
+static int _splv_color_compare(const void* c1, const void* c2)
+{
+	uint8_t a = *((const uint8_t*)c1);
+	uint8_t b = *((const uint8_t*)c2);
+
+    if(a < b) 
+		return -1;
+	if(a > b) 
+		return 1;
+	return 0;
 }

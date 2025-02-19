@@ -378,6 +378,8 @@ static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVfram
 		brickWriter.writePos, brickWriter.buf, outBuf
 	);
 
+	//printf("unencoded: %zi, encoded: %zi\n", brickWriter.writePos, outBuf->writePos);
+
 	if(encodeError != SPLV_SUCCESS)
 	{
 		splv_buffer_writer_destroy(outBuf);
