@@ -3,7 +3,6 @@
 #include "spatialstudio/splv_range_coder.h"
 #include "spatialstudio/splv_log.h"
 #include "spatialstudio/splv_buffer_io.h"
-#include "splv_morton_lut.h"
 
 //-------------------------------------------//
 

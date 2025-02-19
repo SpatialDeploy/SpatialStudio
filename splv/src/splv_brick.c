@@ -1,6 +1,5 @@
 #include "spatialstudio/splv_brick.h"
 
-#include "splv_morton_lut.h"
 #include "spatialstudio/splv_frame.h"
 #include "spatialstudio/splv_log.h"
 #include <string.h>
@@ -99,12 +98,11 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out)
 	uint8_t greenChannels[SPLV_BRICK_LEN];
 	uint8_t blueChannels[SPLV_BRICK_LEN];
 
-	//we do RLE in morton order, we MUST make sure to read it back in the same order
+	//we do RLE in linear order, we MUST make sure to read it back in the same order
 	for(uint32_t i = 0; i < SPLV_BRICK_LEN; i++)
 	{
-		uint32_t idx = MORTON_TO_IDX[i];
-		uint32_t idxArr = idx >> 5;
-		uint32_t idxBit = idx & 31;
+		uint32_t idxArr = i >> 5;
+		uint32_t idxBit = i & 31;
 
 		//update RLE
 		uint8_t filled = (brick->bitmap[idxArr] & (1u << idxBit)) != 0;
@@ -123,7 +121,7 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out)
 		//add color if filled
 		if(filled)
 		{
-			uint32_t color = brick->color[idx];
+			uint32_t color = brick->color[i];
 			uint8_t r = (uint8_t)(color >> 24);
 			uint8_t g = (uint8_t)((color >> 16) & 0xFF);
 			uint8_t b = (uint8_t)((color >> 8 ) & 0xFF);
@@ -331,9 +329,8 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* reader, SPLVbrick* o
 
 			while(curByte > 0)
 			{
-				uint32_t idx = MORTON_TO_IDX[i];
-				uint32_t idxArr = idx / 32;
-				uint32_t idxBit = idx % 32;
+				uint32_t idxArr = i / 32;
+				uint32_t idxBit = i % 32;
 
 				out->bitmap[idxArr] |= 1u << idxBit;
 
@@ -361,10 +358,9 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* reader, SPLVbrick* o
 	uint32_t readVoxels = 0;
 	for(uint32_t i = 0; i < SPLV_BRICK_SIZE * SPLV_BRICK_SIZE * SPLV_BRICK_SIZE; i++)
 	{
-		//we are reading in morton order since we encode in that order
-		uint32_t idx = MORTON_TO_IDX[i];
-		uint32_t arrIdx = idx / 32;
-		uint32_t bitIdx = idx % 32;
+		//we are reading in linear order since we encode in that order
+		uint32_t arrIdx = i / 32;
+		uint32_t bitIdx = i % 32;
 
 		if((out->bitmap[arrIdx] & (uint32_t)(1 << bitIdx)) != 0)
 		{
@@ -376,7 +372,7 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* reader, SPLVbrick* o
 			rgb[2] += medianColor[2];
 
 			uint32_t packedColor = (rgb[0] << 24) | (rgb[1] << 16) | (rgb[2] << 8) | 255;
-			out->color[idx] = packedColor;
+			out->color[i] = packedColor;
 
 			readVoxels++;
 		}
