@@ -1,5 +1,6 @@
 # bin directories:
 [Bb]uild/
+[Bb]uild-[Aa]ndroid/
 [Bb]in/
 
 # vscode configuration:
