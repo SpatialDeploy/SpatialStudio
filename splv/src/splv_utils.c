@@ -547,7 +547,7 @@ static SPLVerror _splv_decoder_sequential_decode(SPLVdecoderSequential* decoder,
 	{
 		decodeError = splv_decoder_decode_frame(
 			&decoder->impl, decoder->curFrame,
-			numDependencies, indexedFrames, &decodedFrame
+			numDependencies, indexedFrames, &decodedFrame, NULL
 		);
 	}
 	

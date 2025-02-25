@@ -426,7 +426,7 @@ BenchmarkResults run_benchmark_nvdb(uint32_t width, uint32_t height, uint32_t de
 
 		SPLVerror decodeError = splv_decoder_decode_frame(
 			&decoder, i, prevDecodedFrames.size(),
-			prevDecodedFrames.data(), frame
+			prevDecodedFrames.data(), frame, NULL
 		);
 		if(decodeError != SPLV_SUCCESS)
 		{

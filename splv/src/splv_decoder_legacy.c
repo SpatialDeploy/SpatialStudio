@@ -315,13 +315,16 @@ SPLV_API SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, 
 	curBrickIdx = 0;
 	for(uint32_t i = 0; i < numBricks; i++)
 	{
+		uint32_t numVoxels;
 		SPLVerror brickDecodeError = splv_brick_decode(
 			&decompressedReader, 
-			&frame->bricks[curBrickIdx], 
+			&frame->bricks[curBrickIdx],
+			NULL, 0,
 			decoder->scratchBufBrickPositions[i].x, 
 			decoder->scratchBufBrickPositions[i].y,
 			decoder->scratchBufBrickPositions[i].z, 
-			lastFrame
+			lastFrame,
+			&numVoxels
 		);
 
 		if(brickDecodeError != SPLV_SUCCESS)

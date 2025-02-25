@@ -48,6 +48,14 @@ public struct SPLVdynArrayUint64
 }
 
 [StructLayout(LayoutKind.Sequential)]
+public struct SPLVbufferReader
+{
+	public UInt64 len;
+	public IntPtr buf;
+	public UInt64 readPos;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 public struct SPLVframe
 {
 	public const UInt32 BRICK_IDX_EMPTY = UInt32.MaxValue;
@@ -60,6 +68,29 @@ public struct SPLVframe
 	public UInt32 bricksLen;
 	public UInt32 bricksCap;
 	public IntPtr bricks;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct SPLVbrickCompact
+{
+	[MarshalAs(UnmanagedType.ByValArray, SizeConst = (int)SPLVbrick.LEN / 32)]
+	public UInt32[] bitmap;
+	public UInt32 voxelsOffset;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct SPLVframeCompact
+{
+	public UInt32 width;
+	public UInt32 height;
+	public UInt32 depth;
+
+	public IntPtr map;
+
+	public UInt32 numBricks;
+	public IntPtr bricks;
+	public UInt64 numVoxels;
+	public IntPtr voxels;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -91,6 +122,48 @@ public struct SPLVencoder
 	public IntPtr scratchBufBricks;
 	public IntPtr scratchBufBrickPositions;
 	public IntPtr scratchBufBrickGroupWriters;
+}
+
+[StructLayout(LayoutKind.Explicit)]
+public struct SPLVdecoderInput
+{
+	[FieldOffset(0)] public SPLVbufferReader inBuf;
+	
+	[FieldOffset(0)]  public IntPtr file;
+	[FieldOffset(8)]  public UInt64 scratchBufLen;
+	[FieldOffset(16)] public IntPtr scratchBuf;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct SPLVdecoder
+{
+	public UInt32 width;
+	public UInt32 height;
+	public UInt32 depth;
+
+	public float framerate;
+	public UInt32 frameCount;
+	public float duration;
+
+	public IntPtr frameTable;
+
+	public  SPLVencodingParams encodingParams;
+
+	public Byte fromFile;
+	SPLVdecoderInput input;
+
+	public UInt64 encodedMapLen;
+	public IntPtr scratchBufEncodedMap;
+	public IntPtr scratchBufBrickPositions;
+
+	public IntPtr threadPool;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct SPLVframeIndexed
+{
+	public UInt64 index;
+	public IntPtr frame;
 }
 
 //-------------------------------------------//
@@ -139,6 +212,15 @@ public class SPLV
 	public static extern SPLVerror FrameRemoveNonvisibleVoxels(IntPtr frame, IntPtr processedFrame);
 	
 	//-------------------------------------------//
+	//from splv_frame_compact.h
+
+	[DllImport(LibraryName, EntryPoint = "splv_frame_compact_create", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror FrameCompactCreate(IntPtr frame, UInt32 width, UInt32 height, UInt32 depth, UInt32 numBricks, UInt64 numVoxels);
+
+	[DllImport(LibraryName, EntryPoint = "splv_frame_compact_destroy", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void FrameCompactDestroy(IntPtr frame);	
+
+	//-------------------------------------------//
 	//from splv_encoder.h
 
 	[DllImport(LibraryName, EntryPoint = "splv_encoder_create", CallingConvention = CallingConvention.Cdecl)]
@@ -152,6 +234,30 @@ public class SPLV
 
 	[DllImport(LibraryName, EntryPoint = "splv_encoder_abort", CallingConvention = CallingConvention.Cdecl)]
 	public static extern void EncoderAbort(IntPtr encoder);
+
+	//-------------------------------------------//
+	//from splv_encoder.h
+
+	[DllImport(LibraryName, EntryPoint = "splv_decoder_create_from_mem", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror DecoderCreateFromMem(IntPtr decoder, UInt64 encodedBufLen, IntPtr encodedBuf);
+
+	[DllImport(LibraryName, EntryPoint = "splv_decoder_create_from_file", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror DecoderCreateFromFile(IntPtr decoder, IntPtr path);
+
+	[DllImport(LibraryName, EntryPoint = "splv_decoder_get_frame_dependencies", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror DecoderGetFrameDependencies(IntPtr decoder, UInt64 idx, out UInt64 numDependencies, IntPtr dependencies, Byte recursive);
+
+	[DllImport(LibraryName, EntryPoint = "splv_decoder_decode_frame", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror DecoderDecodeFrame(IntPtr decoder, UInt64 index, UInt64 numDependencies, IntPtr dependencies, IntPtr frame, IntPtr compactFrame);
+	
+	[DllImport(LibraryName, EntryPoint = "splv_decoder_get_prev_i_frame_idx", CallingConvention = CallingConvention.Cdecl)]
+	public static extern Int64 DecoderGetPrevIFrameIdx(IntPtr decoder, UInt64 idx);
+
+	[DllImport(LibraryName, EntryPoint = "splv_decoder_get_next_i_frame_idx", CallingConvention = CallingConvention.Cdecl)]
+	public static extern Int64 DecoderGetNextIFrameIdx(IntPtr decoder, UInt64 idx);
+
+	[DllImport(LibraryName, EntryPoint = "splv_decoder_destroy", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void DecoderDestroy(IntPtr decoder);
 }
 
 } //namespace SpatialStudioNative

@@ -7,6 +7,7 @@
 #define SPLV_DECODER_H
 
 #include "splv_frame.h"
+#include "splv_frame_compact.h"
 #include "splv_global.h"
 #include "splv_format.h"
 #include "splv_buffer_io.h"
@@ -28,11 +29,19 @@ typedef struct SPLVdecoder SPLVdecoder;
 typedef struct SPLVbrickGroupDecodeInfo
 {
 	SPLVdecoder* decoder;
+
 	SPLVframe* outFrame;
+	SPLVframeCompact* outFrameCompact;
+	
 	uint64_t compressedBufLen;
 	uint8_t* compressedBuf;
+	
 	uint32_t brickStartIdx;
 	uint32_t numBricks;
+	
+	uint64_t voxelsStartIdx;
+	uint64_t numVoxels;
+
 	SPLVframe* lastFrame;
 } SPLVbrickGroupDecodeInfo;
 
@@ -131,8 +140,10 @@ SPLV_API SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uin
 /**
  * decoes a given frame. The decoded frame's ownership is transferred to the caller. All of the dependenceis returned by
  * splv_decoder_get_frame_dependencies() MUST be supplied, or decoding will not be possible.
+ * 
+ * compactFrame will be a compacted representation of the decoded frame, set to NULL if no compact frame is desired
  */
-SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t index, uint64_t numDependencies, SPLVframeIndexed* dependencies, SPLVframe* frame);
+SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t index, uint64_t numDependencies, SPLVframeIndexed* dependencies, SPLVframe* frame, SPLVframeCompact* compactFrame);
 
 /**
  * returns the frame index of the first i-frame before or at the given index
