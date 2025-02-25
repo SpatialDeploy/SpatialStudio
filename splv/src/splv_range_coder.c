@@ -329,18 +329,24 @@ static inline uint32_t _splv_rc_decoder_decode(SPLVrcDecoder* dec, SPLVrcFreqTab
 	uint64_t offset = dec->code - dec->low;
 	uint64_t value = ((offset + 1) * table->total - 1) / dec->range;
 
-	uint32_t start = 0;
-	uint32_t end = SPLV_RC_NUM_SYMBOLS;
-	while(end - start > 1) 
+	uint32_t symbol;
+	if(value < table->cumulative[1])
+		symbol = 0;
+	else
 	{
-		uint32_t middle = (start + end) >> 1;
-		if (table->cumulative[middle] > value)
-			end = middle;
-		else
-			start = middle;
-	}
+		uint32_t start = 1;
+		uint32_t end = SPLV_RC_NUM_SYMBOLS;
+		while(end - start > 1) 
+		{
+			uint32_t middle = (start + end) >> 1;
+			if (table->cumulative[middle] > value)
+				end = middle;
+			else
+				start = middle;
+		}
 
-	uint32_t symbol = start;
+		symbol = start;
+	}
 
 	//get frequency table values:
 	//---------------
