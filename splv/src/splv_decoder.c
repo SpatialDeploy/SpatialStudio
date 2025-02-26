@@ -27,7 +27,7 @@ static inline SPLVerror _splv_decoder_seek(SPLVdecoder* decoder, uint64_t pos);
 
 //-------------------------------------------//
 
-SPLV_API SPLVerror splv_decoder_create_from_mem(SPLVdecoder* decoder, uint64_t encodedBufLen, uint8_t* encodedBuf)
+SPLVerror splv_decoder_create_from_mem(SPLVdecoder* decoder, uint64_t encodedBufLen, uint8_t* encodedBuf)
 {
 	//initialize:
 	//---------------
@@ -44,7 +44,7 @@ SPLV_API SPLVerror splv_decoder_create_from_mem(SPLVdecoder* decoder, uint64_t e
 	return _splv_decoder_create(decoder);
 }
 
-SPLV_API SPLVerror splv_decoder_create_from_file(SPLVdecoder* decoder, const char* path)
+SPLVerror splv_decoder_create_from_file(SPLVdecoder* decoder, const char* path)
 {
 	//initialize:
 	//---------------
@@ -80,7 +80,7 @@ SPLV_API SPLVerror splv_decoder_create_from_file(SPLVdecoder* decoder, const cha
 	return _splv_decoder_create(decoder);
 }
 
-SPLV_API SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uint64_t idx, uint64_t* numDependencies, uint64_t* dependencies, uint8_t recursive)
+SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uint64_t idx, uint64_t* numDependencies, uint64_t* dependencies, uint8_t recursive)
 {
 	//currently theres only a single-frame lookback
 
@@ -464,7 +464,7 @@ SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx, uint64_t
 	return SPLV_SUCCESS;
 }
 
-SPLV_API int64_t splv_decoder_get_prev_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
+int64_t splv_decoder_get_prev_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
 {
 	SPLV_ASSERT(idx < decoder->frameCount, "out of bounds frame index");
 
@@ -483,7 +483,7 @@ SPLV_API int64_t splv_decoder_get_prev_i_frame_idx(SPLVdecoder* decoder, uint64_
 		return frameIdx;
 }
 
-SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
+int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
 {
 	SPLV_ASSERT(idx < decoder->frameCount, "out of bounds frame index");
 
@@ -502,7 +502,7 @@ SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_
 		return frameIdx;
 }
 
-SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
+void splv_decoder_destroy(SPLVdecoder* decoder)
 {
 #ifdef SPLV_DECODER_MULTITHREADING
 	_splv_decoder_thread_pool_destroy(decoder->threadPool);

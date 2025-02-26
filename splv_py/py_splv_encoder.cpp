@@ -455,13 +455,9 @@ uint32_t split(const std::string& path, float splitLength, const std::string& ou
     return numSplits;
 }
 
-void upgrade(const std::string& path, const std::string& outPath, uint32_t gopSize, uint32_t maxBrickGroupSize)
+void upgrade(const std::string& path, const std::string& outPath)
 {
-	SPLVencodingParams encodingParams = {0};
-	encodingParams.gopSize = gopSize;
-	encodingParams.maxBrickGroupSize = maxBrickGroupSize;
-
-    SPLVerror error = splv_file_upgrade(path.c_str(), outPath.c_str(), encodingParams);
+    SPLVerror error = splv_file_upgrade(path.c_str(), outPath.c_str());
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to upgrade splv file with code " <<
@@ -545,7 +541,5 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 	m.def("upgrade", &upgrade,
 		py::arg("path"),
 		py::arg("outPath"),
-		py::arg("gopSize"),
-		py::arg("maxBrickGroupSize"),
 		"Upgrades an SPLV file from the previous version to the current one");
 }
