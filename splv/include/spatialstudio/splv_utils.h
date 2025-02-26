@@ -25,6 +25,6 @@ SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const ch
 /**
  * upgrades an splv file to the latest version
  */
-SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, SPLVencodingParams encodingParams);
+SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath);
 
 #endif //#ifndef SPLV_UTILS_H

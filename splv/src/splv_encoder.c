@@ -3,7 +3,6 @@
 #include "spatialstudio/splv_range_coder.h"
 #include "spatialstudio/splv_log.h"
 #include "spatialstudio/splv_buffer_io.h"
-#include "splv_morton_lut.h"
 
 //-------------------------------------------//
 
@@ -13,7 +12,7 @@
 //-------------------------------------------//
 
 static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVframe* frame, SPLVframeEncodingType frameType, uint32_t numBricks, 
-	                                              SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf);
+	                                              SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf, uint64_t* numVoxels);
 
 static void _splv_encoder_destroy(SPLVencoder* encoder);
 
@@ -92,6 +91,7 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 	encoder->scratchBufBricks = (SPLVbrick**)SPLV_MALLOC(mapLen * sizeof(SPLVbrick*));
 	encoder->scratchBufBrickPositions = (SPLVcoordinate*)SPLV_MALLOC(mapLen * sizeof(SPLVcoordinate));
 	encoder->scratchBufBrickGroupWriters = (SPLVbufferWriter*)SPLV_MALLOC(maxBrickGroups * sizeof(SPLVbufferWriter));
+	encoder->scratchBufVoxelCounts = (uint64_t*)SPLV_MALLOC(maxBrickGroups * sizeof(uint64_t));
 	
 	if(!encoder->scratchBufMapBitmap || !encoder->scratchBufBricks || !encoder->scratchBufBrickPositions || !encoder->scratchBufBrickGroupWriters)
 	{
@@ -176,20 +176,6 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 	//sanity check
 	SPLV_ASSERT(frame->bricksLen == numBricksOrdered, "number of ordered bricks does not match original brick count, sanity check failed");
 
-	//write num bricks + map:
-	//---------------
-	if(fwrite(&numBricksOrdered, sizeof(uint32_t), 1, encoder->outFile) < 1)
-	{
-		SPLV_LOG_ERROR("error writing brick count to output file");
-		return SPLV_ERROR_FILE_WRITE;
-	}
-
-	if(fwrite(encoder->scratchBufMapBitmap, encoder->mapBitmapLen * sizeof(uint32_t), 1, encoder->outFile) < 1)
-	{
-		SPLV_LOG_ERROR("error writing map bitmap to output file");
-		return SPLV_ERROR_FILE_WRITE;
-	}
-
 	//encode each brick group:
 	//---------------
 	uint32_t maxBrickGroupSize;
@@ -202,6 +188,8 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 	uint32_t baseBrickGroupSize      = numBricksOrdered / max(numBrickGroups, 1);
 	uint32_t brickGroupSizeRemainder = numBricksOrdered % max(numBrickGroups, 1);
 
+	uint64_t numVoxels = 0;
+
 	for(uint32_t i = 0; i < numBrickGroups; i++)
 	{
 		uint32_t startBrick = i * baseBrickGroupSize + min(i, brickGroupSizeRemainder);
@@ -211,7 +199,8 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 			encoder, frame, frameType, numBricks, 
 			&encoder->scratchBufBricks[startBrick],
 			&encoder->scratchBufBrickPositions[startBrick],
-			&encoder->scratchBufBrickGroupWriters[i]
+			&encoder->scratchBufBrickGroupWriters[i],
+			&encoder->scratchBufVoxelCounts[i]
 		);
 
 		if(brickGroupError != SPLV_SUCCESS)
@@ -219,6 +208,28 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 			SPLV_LOG_ERROR("error encoding brick group");
 			return brickGroupError;
 		}
+
+		numVoxels += encoder->scratchBufVoxelCounts[i];
+	}
+
+	//write num bricks, num voxels, map:
+	//---------------
+	if(fwrite(&numBricksOrdered, sizeof(uint32_t), 1, encoder->outFile) < 1)
+	{
+		SPLV_LOG_ERROR("error writing brick count to output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	if(fwrite(&numVoxels, sizeof(uint64_t), 1, encoder->outFile) < 1)
+	{
+		SPLV_LOG_ERROR("error writing voxel count to output file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+
+	if(fwrite(encoder->scratchBufMapBitmap, encoder->mapBitmapLen * sizeof(uint32_t), 1, encoder->outFile) < 1)
+	{
+		SPLV_LOG_ERROR("error writing map bitmap to output file");
+		return SPLV_ERROR_FILE_WRITE;
 	}
 
 	//write encoded groups to output file:
@@ -230,6 +241,13 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 		if(fwrite(&curGroupOffset, sizeof(uint64_t), 1, encoder->outFile) < 1)
 		{
 			SPLV_LOG_ERROR("failed to write group offset to output file");
+			return SPLV_ERROR_FILE_WRITE;
+		}
+
+		uint64_t numVoxelsGroup = encoder->scratchBufVoxelCounts[i];
+		if(fwrite(&numVoxelsGroup, sizeof(uint64_t), 1, encoder->outFile) < 1)
+		{
+			SPLV_LOG_ERROR("failed to write group voxel count to output file");
 			return SPLV_ERROR_FILE_WRITE;
 		}
 
@@ -327,7 +345,7 @@ void splv_encoder_abort(SPLVencoder* encoder)
 //-------------------------------------------//
 
 static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVframe* frame, SPLVframeEncodingType frameType, uint32_t numBricks, 
-                                                  SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf)
+                                                  SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf, uint64_t* numVoxels)
 {
 	//encode bricks:
 	//---------------
@@ -336,22 +354,25 @@ static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVfram
 	if(brickWriterError != SPLV_SUCCESS)
 		return brickWriterError;
 
+	*numVoxels = 0;
+
 	for(uint32_t i = 0; i < numBricks; i++)
 	{
 		SPLVerror brickEncodeError;
+		uint32_t brickNumVoxels;
 
 		if(frameType == SPLV_FRAME_ENCODING_TYPE_P)
 		{
 			SPLVcoordinate brickPos = brickPositions[i];
 			brickEncodeError = splv_brick_encode_predictive(
 				bricks[i], brickPos.x, brickPos.y, brickPos.z, 
-				&brickWriter, &encoder->lastFrame
+				&brickWriter, &encoder->lastFrame, &brickNumVoxels
 			);
 		}
 		else
 		{
 			brickEncodeError = splv_brick_encode_intra(
-				bricks[i], &brickWriter
+				bricks[i], &brickWriter, &brickNumVoxels
 			);
 		}
 
@@ -362,6 +383,8 @@ static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVfram
 			SPLV_LOG_ERROR("error encoding brick");
 			return brickEncodeError;
 		}
+
+		*numVoxels += brickNumVoxels;
 	}
 
 	//entropy code group:
@@ -406,6 +429,8 @@ static void _splv_encoder_destroy(SPLVencoder* encoder)
 		SPLV_FREE(encoder->scratchBufBrickPositions);
 	if(encoder->scratchBufBrickGroupWriters)
 		SPLV_FREE(encoder->scratchBufBrickGroupWriters);
+	if(encoder->scratchBufVoxelCounts)
+		SPLV_FREE(encoder->scratchBufVoxelCounts);
 
 	if(encoder->outFile)
 		fclose(encoder->outFile);

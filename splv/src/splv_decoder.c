@@ -27,7 +27,7 @@ static inline SPLVerror _splv_decoder_seek(SPLVdecoder* decoder, uint64_t pos);
 
 //-------------------------------------------//
 
-SPLV_API SPLVerror splv_decoder_create_from_mem(SPLVdecoder* decoder, uint64_t encodedBufLen, uint8_t* encodedBuf)
+SPLVerror splv_decoder_create_from_mem(SPLVdecoder* decoder, uint64_t encodedBufLen, uint8_t* encodedBuf)
 {
 	//initialize:
 	//---------------
@@ -44,7 +44,7 @@ SPLV_API SPLVerror splv_decoder_create_from_mem(SPLVdecoder* decoder, uint64_t e
 	return _splv_decoder_create(decoder);
 }
 
-SPLV_API SPLVerror splv_decoder_create_from_file(SPLVdecoder* decoder, const char* path)
+SPLVerror splv_decoder_create_from_file(SPLVdecoder* decoder, const char* path)
 {
 	//initialize:
 	//---------------
@@ -80,7 +80,7 @@ SPLV_API SPLVerror splv_decoder_create_from_file(SPLVdecoder* decoder, const cha
 	return _splv_decoder_create(decoder);
 }
 
-SPLV_API SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uint64_t idx, uint64_t* numDependencies, uint64_t* dependencies, uint8_t recursive)
+SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uint64_t idx, uint64_t* numDependencies, uint64_t* dependencies, uint8_t recursive)
 {
 	//currently theres only a single-frame lookback
 
@@ -129,7 +129,7 @@ SPLV_API SPLVerror splv_decoder_get_frame_dependencies(SPLVdecoder* decoder, uin
 	return SPLV_SUCCESS;
 }
 
-SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx, uint64_t numDependencies, SPLVframeIndexed* dependencies, SPLVframe* frame)
+SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx, uint64_t numDependencies, SPLVframeIndexed* dependencies, SPLVframe* frame, SPLVframeCompact* compactFrame)
 {
 	//validate:
 	//-----------------
@@ -249,6 +249,15 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	uint32_t numBricks;
 	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&compressedReader, sizeof(uint32_t), &numBricks));
 
+	uint64_t numVoxels;
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&compressedReader, sizeof(uint64_t), &numVoxels));
+
+	if(compactFrame && numVoxels > UINT32_MAX)
+	{
+		SPLV_LOG_ERROR("too many voxels to fit in SPLVframeCompact, more than UINT32_MAX");
+		return SPLV_ERROR_INVALID_INPUT;
+	}
+
 	//create frame:
 	//-----------------
 	uint32_t mapWidth  = decoder->width  / SPLV_BRICK_SIZE;
@@ -263,6 +272,24 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		numBricks
 	));
 
+	if(compactFrame)
+	{
+		SPLVerror compactFrameError = splv_frame_compact_create(
+			compactFrame,
+			mapWidth,
+			mapHeight,
+			mapDepth,
+			numBricks,
+			numVoxels
+		);
+
+		if(compactFrameError != SPLV_SUCCESS)
+		{
+			splv_frame_destroy(frame);
+			return compactFrameError;
+		}
+	}
+
 	//read compressed map, generate full map:
 	//-----------------	
 	SPLVerror readMapError = splv_buffer_reader_read(
@@ -272,6 +299,8 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	if(readMapError != SPLV_SUCCESS)
 	{
 		splv_frame_destroy(frame);
+		if(compactFrame)
+			splv_frame_compact_destroy(compactFrame);
 
 		SPLV_LOG_ERROR("failed to read encoded map from decompressed stream");
 		return readMapError;
@@ -289,16 +318,27 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		if((decoder->scratchBufEncodedMap[idxArr] & (1u << idxBit)) != 0)
 		{
 			decoder->scratchBufBrickPositions[curBrickIdx] = (SPLVcoordinate){ x, y, z };
-			frame->map[idx] = curBrickIdx++;
+			
+			frame->map[idx] = curBrickIdx;
+			if(compactFrame)
+				compactFrame->map[idx] = curBrickIdx;
+
+			curBrickIdx++;
 		}
 		else
+		{
 			frame->map[idx] = SPLV_BRICK_IDX_EMPTY;
+			if(compactFrame)
+				compactFrame->map[idx] = SPLV_BRICK_IDX_EMPTY;
+		}
 	}
 
 	//sanity check
 	if(curBrickIdx != numBricks)
 	{
 		splv_frame_destroy(frame);
+		if(compactFrame)
+			splv_frame_compact_destroy(compactFrame);
 
 		SPLV_LOG_ERROR("invalid SPLV file - given number of bricks did not match contents of map");
 		return SPLV_ERROR_INVALID_INPUT;
@@ -316,8 +356,8 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	uint32_t baseBrickGroupSize      = numBricks / max(numBrickGroups, 1);
 	uint32_t brickGroupSizeRemainder = numBricks % max(numBrickGroups, 1);
 
-	uint8_t* brickGroupsStart = compressedReader.buf + compressedReader.readPos + numBrickGroups * sizeof(uint64_t);
-	uint64_t brickGroupsLen   = compressedReader.len - compressedReader.readPos - numBrickGroups * sizeof(uint64_t);
+	uint8_t* brickGroupsStart = compressedReader.buf + compressedReader.readPos + numBrickGroups * (2 * sizeof(uint64_t));
+	uint64_t brickGroupsLen   = compressedReader.len - compressedReader.readPos - numBrickGroups * (2 * sizeof(uint64_t));
 
 	//TODO: error checking for mutex/cond vars? (dont think they can ever fail except for programmer error)
 
@@ -328,6 +368,8 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 
 	splv_mutex_lock(&decoder->threadPool->groupStackMutex);
 #endif
+
+	uint64_t sumVoxelsGroup = 0;
 
 	for(uint32_t i = 0; i < numBrickGroups; i++)
 	{
@@ -342,9 +384,26 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 			splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
 		#endif
 			splv_frame_destroy(frame);
+			if(compactFrame)
+				splv_frame_compact_destroy(compactFrame);
 
 			SPLV_LOG_ERROR("failed to read brick group offset from decompressed stream");
 			return readOffsetError;
+		}
+
+		uint64_t numVoxelsGroup;
+		SPLVerror readNumVoxelsError = splv_buffer_reader_read(&compressedReader, sizeof(uint64_t), &numVoxelsGroup);
+		if(readNumVoxelsError != SPLV_SUCCESS)
+		{
+		#ifdef SPLV_DECODER_MULTITHREADING
+			splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
+		#endif
+			splv_frame_destroy(frame);
+			if(compactFrame)
+				splv_frame_compact_destroy(compactFrame);
+
+			SPLV_LOG_ERROR("failed to read brick group voxel count from decompressed stream");
+			return readNumVoxelsError;
 		}
 
 		uint8_t* groupBuf = brickGroupsStart + offset;
@@ -353,11 +412,14 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 		SPLVbrickGroupDecodeInfo decodeInfo;
 		decodeInfo.decoder = decoder;
 		decodeInfo.outFrame = frame;
+		decodeInfo.outFrameCompact = compactFrame;
 		decodeInfo.compressedBufLen = groupSize;
 		decodeInfo.compressedBuf = groupBuf;
 		decodeInfo.brickStartIdx = startBrick;
 		decodeInfo.numBricks = numBricks;
 		decodeInfo.lastFrame = lastFrame;
+		decodeInfo.voxelsStartIdx = sumVoxelsGroup;
+		decodeInfo.numVoxels = numVoxelsGroup;
 
 	#ifdef SPLV_DECODER_MULTITHREADING
 		decoder->threadPool->groupStack[decoder->threadPool->groupStackSize] = decodeInfo;
@@ -365,6 +427,21 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	#else
 		_splv_decoder_decode_brick_group(decodeInfo);
 	#endif
+
+		sumVoxelsGroup += numVoxelsGroup;
+	}
+
+	if(sumVoxelsGroup != numVoxels)
+	{
+	#ifdef SPLV_DECODER_MULTITHREADING
+		splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
+	#endif
+		splv_frame_destroy(frame);
+		if(compactFrame)
+			splv_frame_compact_destroy(compactFrame);
+
+		SPLV_LOG_ERROR("sum of group voxel counts did not match given given voxel count");
+		return SPLV_ERROR_INVALID_INPUT;
 	}
 
 #ifdef SPLV_DECODER_MULTITHREADING
@@ -387,7 +464,7 @@ SPLV_API SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx,
 	return SPLV_SUCCESS;
 }
 
-SPLV_API int64_t splv_decoder_get_prev_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
+int64_t splv_decoder_get_prev_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
 {
 	SPLV_ASSERT(idx < decoder->frameCount, "out of bounds frame index");
 
@@ -406,7 +483,7 @@ SPLV_API int64_t splv_decoder_get_prev_i_frame_idx(SPLVdecoder* decoder, uint64_
 		return frameIdx;
 }
 
-SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
+int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_t idx)
 {
 	SPLV_ASSERT(idx < decoder->frameCount, "out of bounds frame index");
 
@@ -425,7 +502,7 @@ SPLV_API int64_t splv_decoder_get_next_i_frame_idx(SPLVdecoder* decoder, uint64_
 		return frameIdx;
 }
 
-SPLV_API void splv_decoder_destroy(SPLVdecoder* decoder)
+void splv_decoder_destroy(SPLVdecoder* decoder)
 {
 #ifdef SPLV_DECODER_MULTITHREADING
 	_splv_decoder_thread_pool_destroy(decoder->threadPool);
@@ -806,18 +883,34 @@ static SPLVerror _splv_decoder_decode_brick_group(SPLVbrickGroupDecodeInfo info)
 
 	//read each brick:
 	//-----------------	
+	uint64_t voxelsWritten = 0;
+
 	for(uint32_t i = 0; i < info.numBricks; i++)
 	{
 		uint32_t idx = info.brickStartIdx + i;
 
+		uint32_t numVoxelsBrick;
 		SPLVerror brickDecodeError = splv_brick_decode(
-			&decompressedReader, 
-			&info.outFrame->bricks[idx], 
+			&decompressedReader,
+			&info.outFrame->bricks[idx],
+			info.outFrameCompact ? 
+				&info.outFrameCompact->voxels[info.voxelsStartIdx + voxelsWritten] : NULL,
+			info.numVoxels - voxelsWritten,
 			info.decoder->scratchBufBrickPositions[idx].x, 
 			info.decoder->scratchBufBrickPositions[idx].y,
-			info.decoder->scratchBufBrickPositions[idx].z, 
-			info.lastFrame
+			info.decoder->scratchBufBrickPositions[idx].z,
+			info.lastFrame,
+			&numVoxelsBrick
 		);
+
+		if(info.outFrameCompact)
+		{
+			SPLVbrick* brick = &info.outFrame->bricks[idx];
+			SPLVbrickCompact* brickCompact = &info.outFrameCompact->bricks[idx];
+			
+			memcpy(brickCompact->bitmap, brick->bitmap, sizeof(brick->bitmap));
+			brickCompact->voxelsOffset = (uint32_t)(info.voxelsStartIdx + voxelsWritten);
+		}
 
 		if(brickDecodeError != SPLV_SUCCESS)
 		{
@@ -826,6 +919,8 @@ static SPLVerror _splv_decoder_decode_brick_group(SPLVbrickGroupDecodeInfo info)
 			SPLV_LOG_ERROR("error while decoding brick");
 			return brickDecodeError;
 		}
+
+		voxelsWritten += numVoxelsBrick;
 	}
 
 	//cleanup + return:

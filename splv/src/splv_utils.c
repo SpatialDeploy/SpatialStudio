@@ -59,7 +59,7 @@ static SPLVerror _splv_decoder_sequential_decode(SPLVdecoderSequential* decoder,
 
 //-------------------------------------------//
 
-SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* outPath)
+SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const char* outPath)
 {
 	//validate:
 	//---------------
@@ -147,7 +147,7 @@ SPLV_API SPLVerror splv_file_concat(uint32_t numPaths, const char** paths, const
 	return SPLV_SUCCESS;
 }
 
-SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const char* outDir, uint32_t* numSplits) 
+SPLVerror splv_file_split(const char* path, float splitLength, const char* outDir, uint32_t* numSplits) 
 {
 	//validate:
 	//---------------
@@ -239,7 +239,7 @@ SPLV_API SPLVerror splv_file_split(const char* path, float splitLength, const ch
 	return SPLV_SUCCESS;
 }
 
-SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, SPLVencodingParams encodingParams)
+SPLVerror splv_file_upgrade(const char* path, const char* outPath)
 {
 	//create decoder + encoder:
 	//---------------
@@ -252,7 +252,7 @@ SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath, SPLV
 	SPLVerror encoderError = _splv_encoder_sequential_create(
 		&encoder,
 		decoder.implLegacy.width, decoder.implLegacy.height, decoder.implLegacy.depth,
-		decoder.implLegacy.framerate, encodingParams, //TODO: store GOP size in file, right now we're potentially reecoding with different params
+		decoder.implLegacy.framerate, decoder.implLegacy.encodingParams,
 		outPath
 	);
 	if(encoderError != SPLV_SUCCESS) 
@@ -547,7 +547,7 @@ static SPLVerror _splv_decoder_sequential_decode(SPLVdecoderSequential* decoder,
 	{
 		decodeError = splv_decoder_decode_frame(
 			&decoder->impl, decoder->curFrame,
-			numDependencies, indexedFrames, &decodedFrame
+			numDependencies, indexedFrames, &decodedFrame, NULL
 		);
 	}
 	

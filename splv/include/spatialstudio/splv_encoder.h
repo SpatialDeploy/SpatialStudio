@@ -38,6 +38,7 @@ typedef struct SPLVencoder
 	SPLVbrick** scratchBufBricks;
 	SPLVcoordinate* scratchBufBrickPositions;
 	SPLVbufferWriter* scratchBufBrickGroupWriters;
+	uint64_t* scratchBufVoxelCounts;
 } SPLVencoder;
 
 //-------------------------------------------//

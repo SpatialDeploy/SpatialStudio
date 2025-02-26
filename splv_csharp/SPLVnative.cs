@@ -71,6 +71,29 @@ public struct SPLVframe
 }
 
 [StructLayout(LayoutKind.Sequential)]
+public struct SPLVbrickCompact
+{
+	[MarshalAs(UnmanagedType.ByValArray, SizeConst = (int)SPLVbrick.LEN / 32)]
+	public UInt32[] bitmap;
+	public UInt32 voxelsOffset;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct SPLVframeCompact
+{
+	public UInt32 width;
+	public UInt32 height;
+	public UInt32 depth;
+
+	public IntPtr map;
+
+	public UInt32 numBricks;
+	public IntPtr bricks;
+	public UInt64 numVoxels;
+	public IntPtr voxels;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 public struct SPLVencodingParams
 {
 	public UInt32 gopSize;
@@ -189,6 +212,15 @@ public class SPLV
 	public static extern SPLVerror FrameRemoveNonvisibleVoxels(IntPtr frame, IntPtr processedFrame);
 	
 	//-------------------------------------------//
+	//from splv_frame_compact.h
+
+	[DllImport(LibraryName, EntryPoint = "splv_frame_compact_create", CallingConvention = CallingConvention.Cdecl)]
+	public static extern SPLVerror FrameCompactCreate(IntPtr frame, UInt32 width, UInt32 height, UInt32 depth, UInt32 numBricks, UInt64 numVoxels);
+
+	[DllImport(LibraryName, EntryPoint = "splv_frame_compact_destroy", CallingConvention = CallingConvention.Cdecl)]
+	public static extern void FrameCompactDestroy(IntPtr frame);	
+
+	//-------------------------------------------//
 	//from splv_encoder.h
 
 	[DllImport(LibraryName, EntryPoint = "splv_encoder_create", CallingConvention = CallingConvention.Cdecl)]
@@ -216,7 +248,7 @@ public class SPLV
 	public static extern SPLVerror DecoderGetFrameDependencies(IntPtr decoder, UInt64 idx, out UInt64 numDependencies, IntPtr dependencies, Byte recursive);
 
 	[DllImport(LibraryName, EntryPoint = "splv_decoder_decode_frame", CallingConvention = CallingConvention.Cdecl)]
-	public static extern SPLVerror DecoderDecodeFrame(IntPtr decoder, UInt64 index, UInt64 numDependencies, IntPtr dependencies, IntPtr frame);
+	public static extern SPLVerror DecoderDecodeFrame(IntPtr decoder, UInt64 index, UInt64 numDependencies, IntPtr dependencies, IntPtr frame, IntPtr compactFrame);
 	
 	[DllImport(LibraryName, EntryPoint = "splv_decoder_get_prev_i_frame_idx", CallingConvention = CallingConvention.Cdecl)]
 	public static extern Int64 DecoderGetPrevIFrameIdx(IntPtr decoder, UInt64 idx);

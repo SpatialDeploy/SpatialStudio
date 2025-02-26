@@ -15,7 +15,7 @@
 #define SPLV_MAKE_VERSION(major, minor, patch, subpatch) (((major) << 24) | ((minor) << 16) | ((patch) << 8) | (subpatch))
 
 #define SPLV_MAGIC_WORD (('s' << 24) | ('p' << 16) | ('l' << 8) | ('v'))
-#define SPLV_VERSION (SPLV_MAKE_VERSION(0, 2, 0, 0))
+#define SPLV_VERSION (SPLV_MAKE_VERSION(0, 2, 1, 0))
 
 //-------------------------------------------//
 
