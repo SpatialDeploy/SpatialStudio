@@ -69,7 +69,7 @@ Once all frames have been added, you must call `splv.SPLVencoder.finish()` to co
 Also included in the python bindings are some utility functions:
 - `splv.concat(paths, outPath)` concatenates multiple spatials together into one. The dimensions and framerate must all match.
 - `splv.split(path, splitLength, outDir)` splits a given spatial into multiple separate spatials, each with the specified duration.
-- `splv.upgrade(path, outPath, gopSize, maxBrickGroupSize)` upgrades a spatial from the previous version to the current version.
+- `splv.upgrade(path, outPath)` upgrades a spatial from the previous version to the current version.
 - `splv.get_vox_max_dimensions(path)` returns the maximum dimensions of the frames in a given `vox` file.
 
 ## Usage (CLI)
