@@ -95,13 +95,11 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out, uint3
 	else
 		curBitmapByte = 0x00;
 
-	//iterate over brick, perform RLE on bitmap and add colors:
+	//iterate over brick, perform RLE on bitmap and get colors:
 	//---------------
-
-	//for finding medians
-	uint8_t redChannels[SPLV_BRICK_LEN];
-	uint8_t greenChannels[SPLV_BRICK_LEN];
-	uint8_t blueChannels[SPLV_BRICK_LEN];
+	uint8_t rChannels[SPLV_BRICK_LEN];
+	uint8_t gChannels[SPLV_BRICK_LEN];
+	uint8_t bChannels[SPLV_BRICK_LEN];
 
 	//we do RLE in linear order, we MUST make sure to read it back in the same order
 	for(uint32_t i = 0; i < SPLV_BRICK_LEN; i++)
@@ -131,13 +129,9 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out, uint3
 			uint8_t g = (uint8_t)((color >> 16) & 0xFF);
 			uint8_t b = (uint8_t)((color >> 8 ) & 0xFF);
 
-			colorBytes[numColorBytes++] = r;
-			colorBytes[numColorBytes++] = g;
-			colorBytes[numColorBytes++] = b;
-
-			redChannels  [voxelCount] = r;
-			greenChannels[voxelCount] = g;
-			blueChannels [voxelCount] = b;
+			rChannels[voxelCount] = r;
+			gChannels[voxelCount] = g;
+			bChannels[voxelCount] = b;
 
 			voxelCount++;
 		}
@@ -145,22 +139,19 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out, uint3
 
 	bitmapBytes[numBitmapBytes++] = curBitmapByte;
 
-	//offset each color by median:
+	//encode each color as a difference from previous:
 	//---------------
-	qsort(redChannels, voxelCount, sizeof(uint8_t), _splv_color_compare);
-	qsort(greenChannels, voxelCount, sizeof(uint8_t), _splv_color_compare);
-	qsort(blueChannels, voxelCount, sizeof(uint8_t), _splv_color_compare);
+	numColorBytes = voxelCount * 3;
 
-	uint8_t medianColor[3];
-	medianColor[0] = redChannels[voxelCount / 2];
-	medianColor[1] = greenChannels[voxelCount / 2];
-	medianColor[2] = blueChannels[voxelCount / 2];
+	colorBytes[0] = rChannels[0];
+	colorBytes[1] = gChannels[0];
+	colorBytes[2] = bChannels[0];
 
-	for(uint32_t i = 0; i < voxelCount; i++)
+	for(uint32_t i = 1; i < voxelCount; i++)
 	{
-		colorBytes[i * 3 + 0] -= medianColor[0];
-		colorBytes[i * 3 + 1] -= medianColor[1];
-		colorBytes[i * 3 + 2] -= medianColor[2];
+		colorBytes[i * 3 + 0] = rChannels[i] - rChannels[i - 1];
+		colorBytes[i * 3 + 1] = gChannels[i] - gChannels[i - 1];
+		colorBytes[i * 3 + 2] = bChannels[i] - bChannels[i - 1];
 	}
 
 	//write:
@@ -169,7 +160,6 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out, uint3
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint8_t), &encodingType));
 
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numBitmapBytes * sizeof(uint8_t), bitmapBytes));
-	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, 3 * sizeof(uint8_t), medianColor));
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numColorBytes * sizeof(uint8_t), colorBytes));
 
 	//return:
@@ -379,13 +369,10 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* in, SPLVbrick* out, 
 		return SPLV_ERROR_INVALID_INPUT;
 	}
 
-	//read median color:
-	//-----------------
-	uint8_t medianColor[3];
-	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, 3 * sizeof(uint8_t), medianColor));
-
 	//loop over every voxel, add to color buffer if present
 	//-----------------
+	uint8_t prevRgb[3] = {0, 0, 0};
+
 	uint32_t readVoxels = 0;
 	for(uint32_t i = 0; i < SPLV_BRICK_SIZE * SPLV_BRICK_SIZE * SPLV_BRICK_SIZE; i++)
 	{
@@ -398,9 +385,9 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* in, SPLVbrick* out, 
 			uint8_t rgb[3];
 			SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, 3 * sizeof(uint8_t), rgb));
 
-			rgb[0] += medianColor[0];
-			rgb[1] += medianColor[1];
-			rgb[2] += medianColor[2];
+			rgb[0] += prevRgb[0];
+			rgb[1] += prevRgb[1];
+			rgb[2] += prevRgb[2];
 
 			uint32_t packedColor = (rgb[0] << 24) | (rgb[1] << 16) | (rgb[2] << 8) | 255;
 			out->color[i] = packedColor;
@@ -409,6 +396,10 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* in, SPLVbrick* out, 
 				outVoxels[readVoxels] = packedColor;
 
 			readVoxels++;
+
+			prevRgb[0] = rgb[0];
+			prevRgb[1] = rgb[1];
+			prevRgb[2] = rgb[2];
 		}
 	}
 
