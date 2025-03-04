@@ -13,6 +13,8 @@
 //TODO: finetune
 #define SPLV_BRICK_GEOM_MISMATCH_COST 3.0f
 
+#define SPLV_BRICK_BLOCK_MATCH_SEARCH_PARAM 7
+
 //-------------------------------------------//
 
 typedef enum SPLVbrickEncodingType
@@ -32,6 +34,9 @@ static SPLVerror _splv_brick_decode_predictive_legacy(SPLVbufferReader* reader, 
 
 static inline splv_bool_t _splv_frame_get_voxel(SPLVframe* frame, int32_t x, int32_t y, int32_t z, uint8_t* r, uint8_t* g, uint8_t* b);
 static float _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, uint32_t offX, uint32_t offY, uint32_t offZ);
+static void _splv_brick_block_match_neighborhood(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap,
+                                                 SPLVframe* lastFrame, int32_t centerX, int32_t centerY, int32_t centerZ, uint32_t searchDist, splv_bool_t includeCenter,
+                                                 float* minCost, int32_t* bestOffX, int32_t* bestOffY, int32_t* bestOffZ);
 
 static inline uint8_t _splv_brick_geom_diff_position_decode(uint8_t* buf, uint32_t* bitIdx);
 static inline void _splv_brick_diff_encode(splv_bool_t add, uint32_t x, uint32_t y, uint32_t z, uint8_t* buf, uint32_t* bitIdx);
@@ -178,32 +183,26 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out, uint3
 
 SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame, uint32_t* numVoxels)
 {
-	/*float minCost = INFINITY;
-	int32_t bestXOff, bestYOff, bestZOff;
-
-	for(int32_t z = -1; z <= 1; z++)
-	for(int32_t y = -1; y <= 1; y++)
-	for(int32_t x = -1; x <= 1; x++)
-	{
-		float cost = _splv_brick_block_match_cost(brick, xMap, yMap, zMap, lastFrame, x, y, z);
-		if(cost < minCost)
-		{
-			minCost = cost;
-			bestXOff = x;
-			bestYOff = y;
-			bestZOff = z;
-		}
-	}
-
-	printf("motion estimate: %d, %d, %d (cost %f)\n", bestXOff, bestYOff, bestZOff, minCost);*/
-
-	//encode without prediction if last frame was empty:
+	//estimate motion (TSS block-matching algorithm in 3D):
 	//---------------
-	uint32_t lastIdxMap = splv_frame_get_map_idx(lastFrame, xMap, yMap, zMap);
-	if(lastFrame->map[lastIdxMap] == SPLV_BRICK_IDX_EMPTY)
-		return splv_brick_encode_intra(brick, out, numVoxels);
+	const uint32_t INITIAL_SEARCH_DIST = (SPLV_BRICK_BLOCK_MATCH_SEARCH_PARAM + 1) / 2;
+	uint32_t searchDist = INITIAL_SEARCH_DIST;
 
-	SPLVbrick* lastBrick = &lastFrame->bricks[lastFrame->map[lastIdxMap]];
+	float cost = INFINITY;
+	int32_t xOff = 0;
+	int32_t yOff = 0;
+	int32_t zOff = 0;
+
+	while(searchDist > 0)
+	{
+		_splv_brick_block_match_neighborhood(
+			brick, xMap, yMap, zMap, lastFrame,
+			xOff, yOff, zOff, 1, searchDist == INITIAL_SEARCH_DIST,
+			&cost, &xOff, &yOff, &zOff
+		);
+
+		searchDist /= 2;
+	}
 
 	//find number of diffs in geometry:
 	//---------------
@@ -213,18 +212,30 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 	uint32_t numGeomDiff = 0;
 	uint32_t voxelCount = 0;
 
+	SPLVbrick lastBrick;
+	splv_brick_clear(&lastBrick);
+
 	for(uint32_t z = 0; z < SPLV_BRICK_SIZE; z++)
 	for(uint32_t y = 0; y < SPLV_BRICK_SIZE; y++)
 	for(uint32_t x = 0; x < SPLV_BRICK_SIZE; x++)
 	{
+		int32_t lastX = xMap * SPLV_BRICK_SIZE + x + xOff;
+		int32_t lastY = yMap * SPLV_BRICK_SIZE + y + yOff;
+		int32_t lastZ = zMap * SPLV_BRICK_SIZE + z + zOff;
+
+		uint8_t lastR, lastG, lastB;
+
 		splv_bool_t filled = splv_brick_get_voxel(brick, x, y, z);
-		splv_bool_t wasFilled = splv_brick_get_voxel(lastBrick, x, y, z);
+		splv_bool_t wasFilled = _splv_frame_get_voxel(lastFrame, lastX, lastY, lastZ, &lastR, &lastG, &lastB);
 
 		if(filled != wasFilled)
 			numGeomDiff++;
 
 		if(filled)
 			voxelCount++;
+
+		if(wasFilled)
+			splv_brick_set_voxel_filled(&lastBrick, x, y, z, lastR, lastG, lastB);
 	}
 
 	//determine if we should encode as I-frame:
@@ -247,7 +258,7 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 	for(uint32_t x = 0; x < SPLV_BRICK_SIZE; x++)
 	{
 		splv_bool_t filled = splv_brick_get_voxel(brick, x, y, z);
-		splv_bool_t wasFilled = splv_brick_get_voxel(lastBrick, x, y, z);
+		splv_bool_t wasFilled = splv_brick_get_voxel(&lastBrick, x, y, z);
 
 		if(filled)
 		{
@@ -258,7 +269,7 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 			if(wasFilled)
 			{
 				uint8_t lastR, lastG, lastB;
-				splv_brick_get_voxel_color(lastBrick, x, y, z, &lastR, &lastG, &lastB);
+				splv_brick_get_voxel_color(&lastBrick, x, y, z, &lastR, &lastG, &lastB);
 
 				encodeR = r - lastR;
 				encodeG = g - lastG;
@@ -290,6 +301,13 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 	//---------------
 	uint8_t encodingType = (uint8_t)SPLV_BRICK_ENCODING_TYPE_P;
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint8_t), &encodingType));
+
+	int8_t xOffEncode = (int8_t)xOff;
+	int8_t yOffEncode = (int8_t)yOff;
+	int8_t zOffEncode = (int8_t)zOff;
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(int8_t), &xOffEncode));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(int8_t), &yOffEncode));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(int8_t), &zOffEncode));
 
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint32_t), &numGeomDiff));
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, (numGeomDiffBits + 7) / 8, geomDiffBytes));
@@ -443,6 +461,11 @@ static SPLVerror _splv_brick_decode_predictive(SPLVbufferReader* in, SPLVbrick* 
 {
 	//read geom diff
 	//-----------------
+	int8_t xOff, yOff, zOff;
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(int8_t), &xOff));
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(int8_t), &yOff));
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(int8_t), &zOff));
+
 	uint32_t numGeomDiff;
 	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(uint32_t), &numGeomDiff));
 
@@ -451,16 +474,22 @@ static SPLVerror _splv_brick_decode_predictive(SPLVbufferReader* in, SPLVbrick* 
 
 	//create brick geometry
 	//-----------------
-	uint32_t lastBrickIdx = lastFrame->map[splv_frame_get_map_idx(lastFrame, xMap, yMap, zMap)];
-	if(lastBrickIdx == SPLV_BRICK_IDX_EMPTY)
-	{
-		SPLV_LOG_ERROR("p-frame brick did not exist last frame");
-		return SPLV_ERROR_INVALID_INPUT;
-	}
+	splv_brick_clear(out);
 
-	//TODO: find faster way to copy?
-	SPLVbrick* lastBrick = &lastFrame->bricks[lastBrickIdx];
-	memcpy((void*)out, (void*)lastBrick, sizeof(SPLVbrick));
+	for(uint32_t z = 0; z < SPLV_BRICK_SIZE; z++)
+	for(uint32_t y = 0; y < SPLV_BRICK_SIZE; y++)
+	for(uint32_t x = 0; x < SPLV_BRICK_SIZE; x++)
+	{
+		uint32_t lastX = xMap * SPLV_BRICK_SIZE + x + xOff;
+		uint32_t lastY = yMap * SPLV_BRICK_SIZE + y + yOff;
+		uint32_t lastZ = zMap * SPLV_BRICK_SIZE + z + zOff;
+
+		uint8_t lastR, lastG, lastB;
+		splv_bool_t filled = _splv_frame_get_voxel(lastFrame, lastX, lastY, lastZ, &lastR, &lastG, &lastB);
+
+		if(filled)
+			splv_brick_set_voxel_filled(out, x, y, z, lastR, lastG, lastB);
+	}
 
 	uint32_t geomDiffBitIdx = 0;
 	for(uint32_t i = 0; i < numGeomDiff; i++)
@@ -713,24 +742,45 @@ static float _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint3
 		uint8_t r2, g2, b2;
 		splv_bool_t filled2 = _splv_frame_get_voxel(lastFrame, lastX, lastY, lastZ, &r2, &g2, &b2);
 
-		float diff;
 		if(filled1 != filled2)
-			diff = SPLV_BRICK_GEOM_MISMATCH_COST;
-		else if(filled1 == SPLV_FALSE)
-			diff = 0.0f;
-		else
+			cost += SPLV_BRICK_GEOM_MISMATCH_COST;
+		else if(filled1 != SPLV_FALSE)
 		{
-			float diffR = fabsf((r1 / 255.0f) - (r2 / 255.0f));
-			float diffG = fabsf((g1 / 255.0f) - (g2 / 255.0f));
-			float diffB = fabsf((b1 / 255.0f) - (b2 / 255.0f));
+			float diffR = fabsf((r1 - r2) / 255.0f);
+			float diffG = fabsf((g1 - g2) / 255.0f);
+			float diffB = fabsf((b1 - b2) / 255.0f);
 
-			diff = diffR + diffG + diffB;
+			cost += diffR + diffG + diffB;
 		}
-
-		cost += diff * diff;
 	}
 
 	return cost;
+}
+
+static void _splv_brick_block_match_neighborhood(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap,
+                                                 SPLVframe* lastFrame, int32_t centerX, int32_t centerY, int32_t centerZ, uint32_t searchDist, splv_bool_t includeCenter,
+                                                 float* minCost, int32_t* bestOffX, int32_t* bestOffY, int32_t* bestOffZ)
+{
+	for(int32_t z = -1; z <= 1; z++)
+	for(int32_t y = -1; y <= 1; y++)
+	for(int32_t x = -1; x <= 1; x++)
+	{
+		if(!includeCenter && x == 0 && y == 0 && z == 0)
+			continue;
+
+		int32_t offX = centerX + x * searchDist;
+		int32_t offY = centerY + y * searchDist;
+		int32_t offZ = centerZ + z * searchDist;
+
+		float cost = _splv_brick_block_match_cost(brick, xMap, yMap, zMap, lastFrame, offX, offY, offZ);
+		if(cost < *minCost)
+		{
+			*minCost = cost;
+			*bestOffX = offX;
+			*bestOffY = offY;
+			*bestOffZ = offZ;
+		}
+	}
 }
 
 //-------------------------------------------//
