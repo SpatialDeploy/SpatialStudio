@@ -11,7 +11,7 @@
 #define SPLV_BRICK_GEOM_DIFF_SIZE (1 + 3 * SPLV_BRICK_SIZE_LOG_2)
 
 //TODO: finetune
-#define SPLV_BRICK_BLOCK_MATCH_GEOM_MISMATCH_COST 3.0f
+#define SPLV_BRICK_BLOCK_MATCH_GEOM_MISMATCH_COST 256 * 3
 #define SPLV_BRICK_BLOCK_MATCH_SEARCH_PARAM 7
 
 //-------------------------------------------//
@@ -32,10 +32,11 @@ static SPLVerror _splv_brick_decode_intra_legacy(SPLVbufferReader* reader, SPLVb
 static SPLVerror _splv_brick_decode_predictive_legacy(SPLVbufferReader* reader, SPLVbrick* out, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame); 
 
 static inline splv_bool_t _splv_frame_get_voxel(SPLVframe* frame, int32_t x, int32_t y, int32_t z, uint8_t* r, uint8_t* g, uint8_t* b);
-static float _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, uint32_t offX, uint32_t offY, uint32_t offZ);
+static uint64_t _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, int32_t offX, int32_t offY, int32_t offZ);
 static void _splv_brick_block_match_neighborhood(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap,
                                                  SPLVframe* lastFrame, int32_t centerX, int32_t centerY, int32_t centerZ, uint32_t searchDist, splv_bool_t includeCenter,
-                                                 float* minCost, int32_t* bestOffX, int32_t* bestOffY, int32_t* bestOffZ);
+                                                 uint64_t* minCost, int32_t* bestOffX, int32_t* bestOffY, int32_t* bestOffZ);
+static void _splv_brick_compute_motion_vector(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, int32_t* offX, int32_t* offY, int32_t* offZ);
 
 static inline uint8_t _splv_brick_geom_diff_position_decode(uint8_t* buf, uint32_t* bitIdx);
 static inline void _splv_brick_diff_encode(splv_bool_t add, uint32_t x, uint32_t y, uint32_t z, uint8_t* buf, uint32_t* bitIdx);
@@ -182,27 +183,14 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out, uint3
 
 SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame, uint32_t* numVoxels, splv_bool_t motionVectors)
 {
-	//estimate motion (TSS block-matching algorithm in 3D):
+	//estimate motion:
 	//---------------
-	const uint32_t INITIAL_SEARCH_DIST = (SPLV_BRICK_BLOCK_MATCH_SEARCH_PARAM + 1) / 2;
-	uint32_t searchDist = INITIAL_SEARCH_DIST;
-
-	float cost = INFINITY;
 	int32_t xOff = 0;
 	int32_t yOff = 0;
 	int32_t zOff = 0;
 
 	if(motionVectors)
-		while(searchDist > 0)
-		{
-			_splv_brick_block_match_neighborhood(
-				brick, xMap, yMap, zMap, lastFrame,
-				xOff, yOff, zOff, 1, searchDist == INITIAL_SEARCH_DIST,
-				&cost, &xOff, &yOff, &zOff
-			);
-
-			searchDist /= 2;
-		}
+		_splv_brick_compute_motion_vector(brick, xMap, yMap, zMap, lastFrame, &xOff, &yOff, &zOff);
 
 	//find number of diffs in geometry:
 	//---------------
@@ -699,6 +687,9 @@ static inline splv_bool_t _splv_frame_get_voxel(SPLVframe* frame, int32_t x, int
 
 	//bounds check:
 	//-----------------
+	if(x < 0 || y < 0 || z < 0)
+		return SPLV_FALSE;
+
 	int32_t xMap = x / SPLV_BRICK_SIZE;
 	int32_t yMap = y / SPLV_BRICK_SIZE;
 	int32_t zMap = z / SPLV_BRICK_SIZE;
@@ -724,33 +715,92 @@ static inline splv_bool_t _splv_frame_get_voxel(SPLVframe* frame, int32_t x, int
 	return splv_brick_get_voxel_color(&frame->bricks[brickIdx], xBrick, yBrick, zBrick, r, g, b);
 }
 
-static float _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, uint32_t offX, uint32_t offY, uint32_t offZ)
+static uint64_t _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, int32_t offX, int32_t offY, int32_t offZ)
 {
-	float cost = 0.0f;
+	uint64_t cost = 0;
 
-	for(uint32_t z = 0; z < SPLV_BRICK_SIZE; z++)
-	for(uint32_t y = 0; y < SPLV_BRICK_SIZE; y++)
-	for(uint32_t x = 0; x < SPLV_BRICK_SIZE; x++)
+	//compute start/end brick:
+	//-----------------
+	int32_t mapStartX = (xMap * SPLV_BRICK_SIZE + offX);
+	int32_t mapStartY = (yMap * SPLV_BRICK_SIZE + offY);
+	int32_t mapStartZ = (zMap * SPLV_BRICK_SIZE + offZ);
+	if(mapStartX < 0) mapStartX -= SPLV_BRICK_SIZE;
+	if(mapStartY < 0) mapStartY -= SPLV_BRICK_SIZE;
+	if(mapStartZ < 0) mapStartZ -= SPLV_BRICK_SIZE;
+	mapStartX /= SPLV_BRICK_SIZE;
+	mapStartY /= SPLV_BRICK_SIZE;
+	mapStartZ /= SPLV_BRICK_SIZE;
+
+	int32_t mapEndX = (xMap * SPLV_BRICK_SIZE + (SPLV_BRICK_SIZE - 1) + offX) / SPLV_BRICK_SIZE;
+	int32_t mapEndY = (yMap * SPLV_BRICK_SIZE + (SPLV_BRICK_SIZE - 1) + offY) / SPLV_BRICK_SIZE;
+	int32_t mapEndZ = (zMap * SPLV_BRICK_SIZE + (SPLV_BRICK_SIZE - 1) + offZ) / SPLV_BRICK_SIZE;
+
+	//loop over bricks:
+	//-----------------
+	for(int32_t mapZ = mapStartZ; mapZ <= mapEndZ; mapZ++)
+	for(int32_t mapY = mapStartY; mapY <= mapEndY; mapY++)
+	for(int32_t mapX = mapStartX; mapX <= mapEndX; mapX++)
 	{
-		uint8_t r1, g1, b1;
-		splv_bool_t filled1 = splv_brick_get_voxel_color(brick, x, y, z, &r1, &g1, &b1);
-
-		uint32_t lastX = xMap * SPLV_BRICK_SIZE + x + offX;
-		uint32_t lastY = yMap * SPLV_BRICK_SIZE + y + offY;
-		uint32_t lastZ = zMap * SPLV_BRICK_SIZE + z + offZ;
-
-		uint8_t r2, g2, b2;
-		splv_bool_t filled2 = _splv_frame_get_voxel(lastFrame, lastX, lastY, lastZ, &r2, &g2, &b2);
-
-		if(filled1 != filled2)
-			cost += SPLV_BRICK_BLOCK_MATCH_GEOM_MISMATCH_COST;
-		else if(filled1 != SPLV_FALSE)
+		//compute start/end voxels:
+		//-----------------
+		int32_t voxStartX = (mapX == mapStartX) ? offX % SPLV_BRICK_SIZE : 0;
+		int32_t voxStartY = (mapY == mapStartY) ? offY % SPLV_BRICK_SIZE : 0;
+		int32_t voxStartZ = (mapZ == mapStartZ) ? offZ % SPLV_BRICK_SIZE : 0;
+		if(voxStartX < 0) voxStartX += SPLV_BRICK_SIZE;
+		if(voxStartY < 0) voxStartY += SPLV_BRICK_SIZE;
+		if(voxStartZ < 0) voxStartZ += SPLV_BRICK_SIZE;
+		
+		int32_t voxEndX = (mapX == mapEndX) ? (mapX * SPLV_BRICK_SIZE + SPLV_BRICK_SIZE - 1 + offX) % SPLV_BRICK_SIZE : SPLV_BRICK_SIZE - 1;
+		int32_t voxEndY = (mapY == mapEndY) ? (mapY * SPLV_BRICK_SIZE + SPLV_BRICK_SIZE - 1 + offY) % SPLV_BRICK_SIZE : SPLV_BRICK_SIZE - 1;
+		int32_t voxEndZ = (mapZ == mapEndZ) ? (mapZ * SPLV_BRICK_SIZE + SPLV_BRICK_SIZE - 1 + offZ) % SPLV_BRICK_SIZE : SPLV_BRICK_SIZE - 1;
+		
+		//get brick:
+		//-----------------
+		SPLVbrick* lastBrick = NULL;
+		if(mapX >= 0 && mapX < (int32_t)lastFrame->width  && 
+		   mapY >= 0 && mapY < (int32_t)lastFrame->height && 
+		   mapZ >= 0 && mapZ < (int32_t)lastFrame->depth)
 		{
-			float diffR = fabsf((r1 - r2) / 255.0f);
-			float diffG = fabsf((g1 - g2) / 255.0f);
-			float diffB = fabsf((b1 - b2) / 255.0f);
+			uint32_t mapIdx = splv_frame_get_map_idx(lastFrame, mapX, mapY, mapZ);
+			uint32_t brickIdx = lastFrame->map[mapIdx];
+	
+			if(brickIdx != SPLV_BRICK_IDX_EMPTY)
+				lastBrick = &lastFrame->bricks[brickIdx];
+		}
+		
+		//check each voxel:
+		//-----------------
+		for(int32_t z = voxStartZ; z <= voxEndZ; z++)
+		for(int32_t y = voxStartY; y <= voxEndY; y++)
+		for(int32_t x = voxStartX; x <= voxEndX; x++)
+		{
+			int32_t srcX = x - voxStartX + (SPLV_BRICK_SIZE - voxEndX - 1);
+			int32_t srcY = y - voxStartY + (SPLV_BRICK_SIZE - voxEndY - 1);
+			int32_t srcZ = z - voxStartZ + (SPLV_BRICK_SIZE - voxEndZ - 1);
 
-			cost += diffR + diffG + diffB;
+			uint8_t r1, g1, b1;
+			splv_bool_t filled1 = splv_brick_get_voxel_color(brick, srcX, srcY, srcZ, &r1, &g1, &b1);
+
+			uint8_t r2, g2, b2;
+			splv_bool_t filled2;
+			if(lastBrick)
+				filled2 = splv_brick_get_voxel_color(lastBrick, x, y, z, &r2, &g2, &b2);
+			else
+			{
+				filled2 = SPLV_FALSE;
+				r2 = 0;
+				g2 = 0;
+				b2 = 0;
+			}
+
+			if(filled1 != filled2)
+				cost += SPLV_BRICK_BLOCK_MATCH_GEOM_MISMATCH_COST;
+			else if(filled1 != SPLV_FALSE)
+			{
+				cost += llabs((int64_t)r1 - (int64_t)r2);
+				cost += llabs((int64_t)g1 - (int64_t)g2);
+				cost += llabs((int64_t)b1 - (int64_t)b2);
+			}
 		}
 	}
 
@@ -759,7 +809,7 @@ static float _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint3
 
 static void _splv_brick_block_match_neighborhood(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap,
                                                  SPLVframe* lastFrame, int32_t centerX, int32_t centerY, int32_t centerZ, uint32_t searchDist, splv_bool_t includeCenter,
-                                                 float* minCost, int32_t* bestOffX, int32_t* bestOffY, int32_t* bestOffZ)
+                                                 uint64_t* minCost, int32_t* bestOffX, int32_t* bestOffY, int32_t* bestOffZ)
 {
 	for(int32_t z = -1; z <= 1; z++)
 	for(int32_t y = -1; y <= 1; y++)
@@ -772,14 +822,91 @@ static void _splv_brick_block_match_neighborhood(SPLVbrick* brick, uint32_t xMap
 		int32_t offY = centerY + y * searchDist;
 		int32_t offZ = centerZ + z * searchDist;
 
-		float cost = _splv_brick_block_match_cost(brick, xMap, yMap, zMap, lastFrame, offX, offY, offZ);
-		if(cost < *minCost)
+		uint64_t cost = _splv_brick_block_match_cost(brick, xMap, yMap, zMap, lastFrame, offX, offY, offZ);
+		if(cost < *minCost || (cost == *minCost && x == 0 && y == 0 && z == 0))
 		{
 			*minCost = cost;
 			*bestOffX = offX;
 			*bestOffY = offY;
 			*bestOffZ = offZ;
 		}
+	}
+}
+
+static void _splv_brick_compute_motion_vector(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, int32_t* bestOffX, int32_t* bestOffY, int32_t* bestOffZ)
+{
+	//initialize:
+	//-----------------
+	const uint32_t INITIAL_SEARCH_DIST = (SPLV_BRICK_BLOCK_MATCH_SEARCH_PARAM + 1) / 2;
+	uint32_t searchDist = INITIAL_SEARCH_DIST;
+
+	uint64_t minCost = UINT64_MAX;
+
+	//search local area:
+	//-----------------
+	_splv_brick_block_match_neighborhood(
+		brick, xMap, yMap, zMap, lastFrame,
+		0, 0, 0, 1, SPLV_TRUE,
+		&minCost, bestOffX, bestOffY, bestOffZ
+	);
+
+	//search macro area:
+	//-----------------
+	_splv_brick_block_match_neighborhood(
+		brick, xMap, yMap, zMap, lastFrame,
+		0, 0, 0, searchDist, SPLV_FALSE,
+		&minCost, bestOffX, bestOffY, bestOffZ
+	);
+
+	//if best cost is 0, early exit:
+	//-----------------
+	if(*bestOffX == 0 && *bestOffY == 0 && *bestOffZ == 0)
+		return;
+
+	//if best cost is in local area, search adjacent voxels then early exit:
+	//-----------------
+	if(abs(*bestOffX) <= 1 && abs(*bestOffY) <= 1 && abs(*bestOffZ) <= 1)
+	{
+		int32_t centerX = *bestOffX;
+		int32_t centerY = *bestOffY;
+		int32_t centerZ = *bestOffZ;
+
+		for(int32_t z = -1; z <= 1; z++)
+		for(int32_t y = -1; y <= 1; y++)
+		for(int32_t x = -1; x <= 1; x++)
+		{
+			int32_t offX = centerX + x;
+			int32_t offY = centerY + y;
+			int32_t offZ = centerZ + z;
+
+			//skip offsets we already checked
+			if(abs(offX) <= 1 && abs(offY) <= 1 && abs(offZ) <= 1)
+				continue;
+
+			uint64_t cost = _splv_brick_block_match_cost(brick, xMap, yMap, zMap, lastFrame, offX, offY, offZ);
+			if(cost < minCost)
+			{
+				minCost = cost;
+				*bestOffX = offX;
+				*bestOffY = offY;
+				*bestOffZ = offZ;
+			}
+		}
+
+		return;
+	}
+
+	//if best cose is in macro area, keep searching:
+	//-----------------
+	while(searchDist > 1)
+	{
+		searchDist /= 2;
+
+		_splv_brick_block_match_neighborhood(
+			brick, xMap, yMap, zMap, lastFrame,
+			*bestOffX, *bestOffY, *bestOffZ, searchDist, SPLV_FALSE,
+			&minCost, bestOffX, bestOffY, bestOffZ
+		);
 	}
 }
 

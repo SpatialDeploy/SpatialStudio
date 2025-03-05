@@ -240,6 +240,7 @@ int main(int argc, const char** argv)
 	SPLVencodingParams encodingParams;
 	encodingParams.gopSize = gopSize;
 	encodingParams.maxBrickGroupSize = maxBrickGroupSize;
+	encodingParams.motionVectors = motionVectors;
 
 	SPLVboundingBox bbox;
 	bbox.xMin = 0;
