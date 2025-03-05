@@ -11,8 +11,7 @@
 #define SPLV_BRICK_GEOM_DIFF_SIZE (1 + 3 * SPLV_BRICK_SIZE_LOG_2)
 
 //TODO: finetune
-#define SPLV_BRICK_GEOM_MISMATCH_COST 3.0f
-
+#define SPLV_BRICK_BLOCK_MATCH_GEOM_MISMATCH_COST 3.0f
 #define SPLV_BRICK_BLOCK_MATCH_SEARCH_PARAM 7
 
 //-------------------------------------------//
@@ -181,7 +180,7 @@ SPLVerror splv_brick_encode_intra(SPLVbrick* brick, SPLVbufferWriter* out, uint3
 	return SPLV_SUCCESS;
 }
 
-SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame, uint32_t* numVoxels)
+SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame, uint32_t* numVoxels, splv_bool_t motionVectors)
 {
 	//estimate motion (TSS block-matching algorithm in 3D):
 	//---------------
@@ -193,16 +192,17 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 	int32_t yOff = 0;
 	int32_t zOff = 0;
 
-	while(searchDist > 0)
-	{
-		_splv_brick_block_match_neighborhood(
-			brick, xMap, yMap, zMap, lastFrame,
-			xOff, yOff, zOff, 1, searchDist == INITIAL_SEARCH_DIST,
-			&cost, &xOff, &yOff, &zOff
-		);
+	if(motionVectors)
+		while(searchDist > 0)
+		{
+			_splv_brick_block_match_neighborhood(
+				brick, xMap, yMap, zMap, lastFrame,
+				xOff, yOff, zOff, 1, searchDist == INITIAL_SEARCH_DIST,
+				&cost, &xOff, &yOff, &zOff
+			);
 
-		searchDist /= 2;
-	}
+			searchDist /= 2;
+		}
 
 	//find number of diffs in geometry:
 	//---------------
@@ -743,7 +743,7 @@ static float _splv_brick_block_match_cost(SPLVbrick* brick, uint32_t xMap, uint3
 		splv_bool_t filled2 = _splv_frame_get_voxel(lastFrame, lastX, lastY, lastZ, &r2, &g2, &b2);
 
 		if(filled1 != filled2)
-			cost += SPLV_BRICK_GEOM_MISMATCH_COST;
+			cost += SPLV_BRICK_BLOCK_MATCH_GEOM_MISMATCH_COST;
 		else if(filled1 != SPLV_FALSE)
 		{
 			float diffR = fabsf((r1 - r2) / 255.0f);

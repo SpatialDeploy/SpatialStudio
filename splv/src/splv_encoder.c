@@ -366,7 +366,8 @@ static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVfram
 			SPLVcoordinate brickPos = brickPositions[i];
 			brickEncodeError = splv_brick_encode_predictive(
 				bricks[i], brickPos.x, brickPos.y, brickPos.z, 
-				&brickWriter, &encoder->lastFrame, &brickNumVoxels
+				&brickWriter, &encoder->lastFrame, &brickNumVoxels,
+				encoder->encodingParams.motionVectors
 			);
 		}
 		else

@@ -71,7 +71,7 @@ typedef struct SPLVframe SPLVframe;
 /**
  * encodes a brick into the given buffer writer, using information from the previous frame to predict
  */
-SPLV_API SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame, uint32_t* numVoxels);
+SPLV_API SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVbufferWriter* out, SPLVframe* lastFrame, uint32_t* numVoxels, splv_bool_t motionVectors);
 
 /**
  * decodes a brick from an input reader into the given pointer

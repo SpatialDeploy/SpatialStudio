@@ -33,3 +33,9 @@ x32/
 # python package info:
 *.egg-info/
 __pycache__/
+
+# benchmark binary + dataset
+bench/splv_benchmark
+bench/splv_benchmark.exe
+bench/dataset/
+bench/temp.splv

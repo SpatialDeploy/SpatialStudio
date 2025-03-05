@@ -26,6 +26,7 @@ typedef struct SPLVencodingParams
 {
 	uint32_t gopSize;
 	uint32_t maxBrickGroupSize;
+	splv_bool_t motionVectors;
 } SPLVencodingParams;
 
 /**

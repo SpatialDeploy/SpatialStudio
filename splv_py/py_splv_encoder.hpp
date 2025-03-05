@@ -19,7 +19,7 @@ class PySPLVencoder
 {
 public:
 	PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, 
-	              uint32_t gopSize, uint32_t maxBrickGroupSize, std::string outPath);
+	              uint32_t gopSize, uint32_t maxBrickGroupSize, bool motionVectors, std::string outPath);
 
 	void encode_nvdb_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ,
 	                       int32_t maxX, int32_t maxY, int32_t maxZ, std::string lrAxis, 

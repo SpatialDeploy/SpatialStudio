@@ -115,7 +115,7 @@ void encode_frame(SPLVencoder* encoder, SPLVframe* frame, bool removeNonvisible)
 
 //-------------------------------------------//
 
-//usage: splv_encoder -d [width] [height] [depth] -f [framerate] -o [output file]
+//usage: splv_encoder -d [width] [height] [depth] -f [framerate] -g [gop size] -b [max brickgroup size] -m [motion vectors] -o [output file]
 int main(int argc, const char** argv)
 {
 	//parse and validate command line args:
@@ -128,6 +128,7 @@ int main(int argc, const char** argv)
 	
 	int32_t gopSize = 1;
 	int32_t maxBrickGroupSize = 256;
+	splv_bool_t motionVectors = SPLV_TRUE;
 
 	std::string outPath = "";
 
@@ -182,7 +183,7 @@ int main(int argc, const char** argv)
 				return -1;
 			}
 		}
-		else if(arg == "-g")
+		else if(arg == "-g") //gop size
 		{
 			if(i + 1 >= (uint32_t)argc)
 			{
@@ -203,7 +204,7 @@ int main(int argc, const char** argv)
 				return -1;
 			}
 		}
-		else if(arg == "-b")
+		else if(arg == "-b") //max brickgroup size
 		{
 			if(i + 1 >= (uint32_t)argc)
 			{
@@ -224,6 +225,25 @@ int main(int argc, const char** argv)
 				return -1;
 			}
 		}
+		else if(arg == "-m") //motion vectors
+		{
+			if(i + 1 >= (uint32_t)argc)
+			{
+				std::cout << "ERROR: not enough arguments supplied to \"-m\"" << std::endl;
+				return -1;
+			}
+
+			std::string option = std::string(argv[++i]);
+			if(option == "on")
+				motionVectors = SPLV_TRUE;
+			else if(option == "off")
+				motionVectors = SPLV_FALSE;
+			else
+			{
+				std::cout << "ERROR: invalid maximum motion vectors option" << std::endl;
+				return -1;
+			}
+		}
 		else if(arg == "-o") //output file
 		{
 			if(i + 1 >= (uint32_t)argc)
@@ -237,7 +257,7 @@ int main(int argc, const char** argv)
 		else
 		{
 			std::cout << "ERROR: unrecognized command line argument \"" << arg << "\"" << std::endl;
-			std::cout << "VALID USAGE: splv_encoder -d [width] [height] [depth] -f [framerate] -o [output file]" << std::endl;
+			std::cout << "VALID USAGE: splv_encoder -d [width] [height] [depth] -f [framerate] -o [output file] -g [gop size] -b [max brickgroup size] -m [motion vectors]" << std::endl;
 			return -1;
 		}
 	}
@@ -265,6 +285,7 @@ int main(int argc, const char** argv)
 	SPLVencodingParams encodingParams;
 	encodingParams.gopSize = gopSize;
 	encodingParams.maxBrickGroupSize = maxBrickGroupSize;
+	encodingParams.motionVectors = motionVectors;
 
 	SPLVencoder encoder;
 	SPLVerror encoderError = splv_encoder_create(&encoder, width, height, depth, framerate, encodingParams, outPath.c_str());

@@ -70,6 +70,13 @@ if(SPLV_BUILD_BENCHMARK)
     add_executable(splv_benchmark "bench/splv_benchmark.cpp")
 
     target_link_libraries(splv_benchmark PRIVATE splv_encoder_lib)
+
+    add_custom_command(TARGET splv_benchmark POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:splv_benchmark>
+        ${CMAKE_CURRENT_SOURCE_DIR}/bench/
+        COMMENT "copying splv_benchmark to bench directory"
+    )
 endif()
 
 # add python module

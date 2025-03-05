@@ -11,7 +11,7 @@
 //-------------------------------------------//
 
 PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, 
-                             uint32_t gopSize, uint32_t maxBrickGroupSize, std::string outPath)
+                             uint32_t gopSize, uint32_t maxBrickGroupSize, bool motionVectors, std::string outPath)
 {
 	//validate:
 	//---------------
@@ -44,6 +44,7 @@ PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, fl
 	SPLVencodingParams encodingParams = {0};
 	encodingParams.gopSize = gopSize;
 	encodingParams.maxBrickGroupSize = maxBrickGroupSize;
+	encodingParams.motionVectors = motionVectors;
 
 	SPLVerror encoderError = splv_encoder_create(&m_encoder, width, height, depth, framerate, encodingParams, outPath.c_str());
 	if(encoderError != SPLV_SUCCESS)
@@ -472,13 +473,14 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 	m.doc() = "SPLV Encoder";
 
 	py::class_<PySPLVencoder>(m, "SPLVencoder")
-		.def(py::init<uint32_t, uint32_t, uint32_t, float, uint32_t, uint32_t, const std::string&>(),
+		.def(py::init<uint32_t, uint32_t, uint32_t, float, uint32_t, uint32_t, float, const std::string&>(),
 			py::arg("width"),
 			py::arg("height"),
 			py::arg("depth"),
 			py::arg("framerate"),
 			py::arg("gopSize"),
 			py::arg("maxBrickGroupSize"),
+			py::arg("motionVectors"),
 			py::arg("outputPath"),
 			"Create a new SPLVencoder instance")
 		.def("encode_nvdb_frame", &PySPLVencoder::encode_nvdb_frame,

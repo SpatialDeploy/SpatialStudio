@@ -33,7 +33,7 @@ BenchmarkResults run_benchmark_nvdb(uint32_t width, uint32_t height, uint32_t de
 
 //-------------------------------------------//
 
-//usage: splv_benchmark -d [width] [height] [depth] -f [framerate] -g [gop size] -b [max brick group size] -i [input direcrory] -o [output file]
+//usage: splv_benchmark -d [width] [height] [depth] -f [framerate] -g [gop size] -b [max brick group size] -m [motion vectors] -i [input direcrory] -o [output file]
 int main(int argc, const char** argv)
 {
 	//parse and validate command line args:
@@ -46,6 +46,7 @@ int main(int argc, const char** argv)
 	
 	int32_t gopSize = 1;
 	int32_t maxBrickGroupSize = 256;
+	splv_bool_t motionVectors = SPLV_TRUE;
 
 	std::string inDir = "";
 	std::string outPath = "";
@@ -143,6 +144,25 @@ int main(int argc, const char** argv)
 				return -1;
 			}
 		}
+		else if(arg == "-m") //motion vectors
+		{
+			if(i + 1 >= (uint32_t)argc)
+			{
+				std::cout << "ERROR: not enough arguments supplied to \"-m\"" << std::endl;
+				return -1;
+			}
+
+			std::string option = std::string(argv[++i]);
+			if(option == "on")
+				motionVectors = SPLV_TRUE;
+			else if(option == "off")
+				motionVectors = SPLV_FALSE;
+			else
+			{
+				std::cout << "ERROR: invalid maximum motion vectors option" << std::endl;
+				return -1;
+			}
+		}
 		else if(arg == "-i") //input directory
 		{
 			if(i + 1 >= (uint32_t)argc)
@@ -166,7 +186,7 @@ int main(int argc, const char** argv)
 		else
 		{
 			std::cout << "ERROR: unrecognized command line argument \"" << arg << "\"" << std::endl;
-			std::cout << "VALID USAGE: splv_encoder -d [width] [height] [depth] -f [framerate] -o [output file]" << std::endl;
+			std::cout << "VALID USAGE: splv_encoder -d [width] [height] [depth] -f [framerate] -i [input dir] -g [gop size] -b [max brickgroup size] -m [motion vectors] -o [output file]" << std::endl;
 			return -1;
 		}
 	}
