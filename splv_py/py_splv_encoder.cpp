@@ -7,6 +7,7 @@
 #include <pybind11/stl.h>
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 //-------------------------------------------//
 
@@ -238,10 +239,10 @@ void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t
 			float bFloat = *(float*)(elem + 2 * buf.strides[3]);
 			float aFloat = *(float*)(elem + 3 * buf.strides[3]);
 
-			r = (uint8_t)(std::min(std::max(rFloat, 0.0f), 1.0f) * 255.0f);
-			g = (uint8_t)(std::min(std::max(gFloat, 0.0f), 1.0f) * 255.0f);
-			b = (uint8_t)(std::min(std::max(bFloat, 0.0f), 1.0f) * 255.0f);
-			a = (uint8_t)(std::min(std::max(aFloat, 0.0f), 1.0f) * 255.0f);
+			r = (uint8_t)(std::min<float>(std::max<float>(rFloat, 0.0f), 1.0f) * 255.0f);
+			g = (uint8_t)(std::min<float>(std::max<float>(gFloat, 0.0f), 1.0f) * 255.0f);
+			b = (uint8_t)(std::min<float>(std::max<float>(bFloat, 0.0f), 1.0f) * 255.0f);
+			a = (uint8_t)(std::min<float>(std::max<float>(aFloat, 0.0f), 1.0f) * 255.0f);
 		}
 		else
 		{
