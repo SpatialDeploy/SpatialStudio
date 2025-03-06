@@ -248,11 +248,16 @@ SPLVerror splv_file_upgrade(const char* path, const char* outPath)
 	if(decoderError != SPLV_SUCCESS)
 		return decoderError;
 
+	SPLVencodingParams encodingParams;
+	encodingParams.gopSize = decoder.implLegacy.encodingParams.gopSize;
+	encodingParams.maxBrickGroupSize = decoder.implLegacy.encodingParams.maxBrickGroupSize;
+	encodingParams.motionVectors = SPLV_TRUE;
+
 	SPLVencoderSequential encoder;
 	SPLVerror encoderError = _splv_encoder_sequential_create(
 		&encoder,
 		decoder.implLegacy.width, decoder.implLegacy.height, decoder.implLegacy.depth,
-		decoder.implLegacy.framerate, decoder.implLegacy.encodingParams,
+		decoder.implLegacy.framerate, encodingParams,
 		outPath
 	);
 	if(encoderError != SPLV_SUCCESS) 

@@ -23,6 +23,36 @@
 typedef struct SPLVdecoderLegacy SPLVdecoderLegacy;
 
 /**
+ * legacy encoding params
+ */
+typedef struct SPLVencodingParamsLegacy
+{
+	uint32_t gopSize;
+	uint32_t maxBrickGroupSize;
+} SPLVencodingParamsLegacy;
+
+/**
+ * header containing all metadata in a legacy splv file
+ */
+typedef struct SPLVfileHeaderLegacy
+{
+	uint32_t magicWord;
+	uint32_t version;
+
+	uint32_t width;
+	uint32_t height;
+	uint32_t depth;
+
+	float framerate;
+	uint32_t frameCount;
+	float duration;
+	
+	SPLVencodingParamsLegacy encodingParams;
+
+	uint64_t frameTablePtr;
+} SPLVfileHeaderLegacy;
+
+/**
  * all info needed for a thread to decode a brick group
  */
 typedef struct SPLVbrickGroupDecodeInfoLegacy
@@ -70,7 +100,7 @@ typedef struct SPLVdecoderLegacy
 
 	uint64_t* frameTable;
 
-	SPLVencodingParams encodingParams;
+	SPLVencodingParamsLegacy encodingParams;
 
 	//input info:
 	uint8_t fromFile;

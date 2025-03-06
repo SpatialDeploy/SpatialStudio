@@ -249,6 +249,9 @@ SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, uint64_t 
 	uint32_t numBricks;
 	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&compressedReader, sizeof(uint32_t), &numBricks));
 
+	uint64_t numVoxels;
+	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(&compressedReader, sizeof(uint64_t), &numVoxels));
+
 	//create frame:
 	//-----------------
 	uint32_t mapWidth  = decoder->width  / SPLV_BRICK_SIZE;
@@ -289,7 +292,9 @@ SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, uint64_t 
 		if((decoder->scratchBufEncodedMap[idxArr] & (1u << idxBit)) != 0)
 		{
 			decoder->scratchBufBrickPositions[curBrickIdx] = (SPLVcoordinate){ x, y, z };
-			frame->map[idx] = curBrickIdx++;
+			
+			frame->map[idx] = curBrickIdx;
+			curBrickIdx++;
 		}
 		else
 			frame->map[idx] = SPLV_BRICK_IDX_EMPTY;
@@ -316,8 +321,8 @@ SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, uint64_t 
 	uint32_t baseBrickGroupSize      = numBricks / max(numBrickGroups, 1);
 	uint32_t brickGroupSizeRemainder = numBricks % max(numBrickGroups, 1);
 
-	uint8_t* brickGroupsStart = compressedReader.buf + compressedReader.readPos + numBrickGroups * sizeof(uint64_t);
-	uint64_t brickGroupsLen   = compressedReader.len - compressedReader.readPos - numBrickGroups * sizeof(uint64_t);
+	uint8_t* brickGroupsStart = compressedReader.buf + compressedReader.readPos + numBrickGroups * (2 * sizeof(uint64_t));
+	uint64_t brickGroupsLen   = compressedReader.len - compressedReader.readPos - numBrickGroups * (2 * sizeof(uint64_t));
 
 	//TODO: error checking for mutex/cond vars? (dont think they can ever fail except for programmer error)
 
@@ -328,6 +333,8 @@ SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, uint64_t 
 
 	splv_mutex_lock(&decoder->threadPool->groupStackMutex);
 #endif
+
+	uint64_t sumVoxelsGroup = 0;
 
 	for(uint32_t i = 0; i < numBrickGroups; i++)
 	{
@@ -345,6 +352,19 @@ SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, uint64_t 
 
 			SPLV_LOG_ERROR("failed to read brick group offset from decompressed stream");
 			return readOffsetError;
+		}
+
+		uint64_t numVoxelsGroup;
+		SPLVerror readNumVoxelsError = splv_buffer_reader_read(&compressedReader, sizeof(uint64_t), &numVoxelsGroup);
+		if(readNumVoxelsError != SPLV_SUCCESS)
+		{
+		#ifdef SPLV_DECODER_MULTITHREADING
+			splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
+		#endif
+			splv_frame_destroy(frame);
+
+			SPLV_LOG_ERROR("failed to read brick group voxel count from decompressed stream");
+			return readNumVoxelsError;
 		}
 
 		uint8_t* groupBuf = brickGroupsStart + offset;
@@ -365,6 +385,19 @@ SPLVerror splv_decoder_legacy_decode_frame(SPLVdecoderLegacy* decoder, uint64_t 
 	#else
 		_splv_decoder_decode_brick_group(decodeInfo);
 	#endif
+
+		sumVoxelsGroup += numVoxelsGroup;
+	}
+
+	if(sumVoxelsGroup != numVoxels)
+	{
+	#ifdef SPLV_DECODER_MULTITHREADING
+		splv_mutex_unlock(&decoder->threadPool->groupStackMutex);
+	#endif
+		splv_frame_destroy(frame);
+
+		SPLV_LOG_ERROR("sum of group voxel counts did not match given given voxel count");
+		return SPLV_ERROR_INVALID_INPUT;
 	}
 
 #ifdef SPLV_DECODER_MULTITHREADING
@@ -449,8 +482,8 @@ static SPLVerror _splv_decoder_legacy_create(SPLVdecoderLegacy* decoder)
 {
 	//read header + validate:
 	//-----------------
-	SPLVfileHeader header;
-	SPLVerror readHeaderError = _splv_decoder_legacy_read(decoder, sizeof(SPLVfileHeader), &header);
+	SPLVfileHeaderLegacy header;
+	SPLVerror readHeaderError = _splv_decoder_legacy_read(decoder, sizeof(SPLVfileHeaderLegacy), &header);
 	if(readHeaderError != SPLV_SUCCESS)
 	{
 		splv_decoder_legacy_destroy(decoder);
@@ -467,7 +500,7 @@ static SPLVerror _splv_decoder_legacy_create(SPLVdecoderLegacy* decoder)
 		return SPLV_ERROR_INVALID_INPUT;
 	}
 
-	if(header.version != SPLV_MAKE_VERSION(0, 2, 0, 0))
+	if(header.version != SPLV_MAKE_VERSION(0, 2, 1, 0))
 	{
 		splv_decoder_legacy_destroy(decoder);
 
