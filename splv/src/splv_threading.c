@@ -1,5 +1,6 @@
 #include "spatialstudio/splv_threading.h"
 #include "spatialstudio/splv_log.h"
+#include <string.h>
 
 //-------------------------------------------//
 
