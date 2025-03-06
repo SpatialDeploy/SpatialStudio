@@ -235,11 +235,18 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 
 	//encode diffs in geom + color:
 	//---------------
-	uint32_t numGeomDiffBits = 0;
-	uint8_t geomDiffBytes[(SPLV_BRICK_GEOM_DIFF_SIZE * SPLV_BRICK_LEN + 7) / 8] = {0};
-
+	uint32_t numBitmapBytes = 0;
+	uint8_t bitmapBytes[SPLV_BRICK_LEN]; //1 byte per voxel (worst case)
 	uint32_t numColorBytes = 0;
 	uint8_t colorBytes[SPLV_BRICK_LEN * 3];
+
+	uint8_t curBitmapByte; //for RLE
+	if(((brick->bitmap[0] ^ lastBrick.bitmap[0]) & 1) != 0)
+		curBitmapByte = 0x80;
+	else
+		curBitmapByte = 0x00;
+
+	//TODO: merge this loop with previous
 
 	for(uint32_t z = 0; z < SPLV_BRICK_SIZE; z++)
 	for(uint32_t y = 0; y < SPLV_BRICK_SIZE; y++)
@@ -268,22 +275,28 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 				encodeR = r;
 				encodeG = g;
 				encodeB = b;
-
-				_splv_brick_diff_encode(SPLV_TRUE, x, y, z, geomDiffBytes, &numGeomDiffBits);
 			}
 
 			colorBytes[numColorBytes++] = encodeR;
 			colorBytes[numColorBytes++] = encodeG;
 			colorBytes[numColorBytes++] = encodeB;
 		}
-		else
+
+		splv_bool_t diff = filled != wasFilled;
+		if(diff != ((curBitmapByte & (1 << 7u)) != 0) || (curBitmapByte & 0x7f) == 127)
 		{
-			if(wasFilled)
-				_splv_brick_diff_encode(SPLV_FALSE, x, y, z, geomDiffBytes, &numGeomDiffBits);
+			bitmapBytes[numBitmapBytes++] = curBitmapByte;
+
+			if(diff)
+				curBitmapByte = 0x80;
 			else
-				continue;
+				curBitmapByte = 0x00;
 		}
+
+		curBitmapByte++;
 	}
+
+	bitmapBytes[numBitmapBytes++] = curBitmapByte;
 
 	//write:
 	//---------------
@@ -297,9 +310,8 @@ SPLVerror splv_brick_encode_predictive(SPLVbrick* brick, uint32_t xMap, uint32_t
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(int8_t), &yOffEncode));
 	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(int8_t), &zOffEncode));
 
-	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, sizeof(uint32_t), &numGeomDiff));
-	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, (numGeomDiffBits + 7) / 8, geomDiffBytes));
-	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numColorBytes, colorBytes));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numBitmapBytes * sizeof(uint8_t), bitmapBytes));
+	SPLV_ERROR_PROPAGATE(splv_buffer_writer_write(out, numColorBytes * sizeof(uint8_t), colorBytes));
 
 	//return:
 	//---------------
@@ -447,20 +459,14 @@ static SPLVerror _splv_brick_decode_intra(SPLVbufferReader* in, SPLVbrick* out, 
 static SPLVerror _splv_brick_decode_predictive(SPLVbufferReader* in, SPLVbrick* out, uint32_t* outVoxels, uint64_t outVoxelsLen,
                                                uint32_t xMap, uint32_t yMap, uint32_t zMap, SPLVframe* lastFrame, uint32_t* numVoxels)
 {
-	//read geom diff
+	//read motion vector:
 	//-----------------
 	int8_t xOff, yOff, zOff;
 	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(int8_t), &xOff));
 	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(int8_t), &yOff));
 	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(int8_t), &zOff));
 
-	uint32_t numGeomDiff;
-	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(uint32_t), &numGeomDiff));
-
-	uint8_t geomDiffEncoded[(SPLV_BRICK_GEOM_DIFF_SIZE * SPLV_BRICK_LEN + 7) / 8];
-	SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, (SPLV_BRICK_GEOM_DIFF_SIZE * (uint32_t)numGeomDiff + 7) / 8, geomDiffEncoded));
-
-	//create brick geometry
+	//copy last frame
 	//-----------------
 	splv_brick_clear(out);
 
@@ -479,20 +485,37 @@ static SPLVerror _splv_brick_decode_predictive(SPLVbufferReader* in, SPLVbrick* 
 			splv_brick_set_voxel_filled(out, x, y, z, lastR, lastG, lastB);
 	}
 
-	uint32_t geomDiffBitIdx = 0;
-	for(uint32_t i = 0; i < numGeomDiff; i++)
+	//decode geom diffs:
+	//-----------------
+	uint32_t i = 0;
+	while(i < SPLV_BRICK_SIZE * SPLV_BRICK_SIZE * SPLV_BRICK_SIZE)
 	{
-		uint8_t add = (geomDiffEncoded[geomDiffBitIdx / 8] & (1 << (7 - (geomDiffBitIdx % 8)))) != 0;
-		geomDiffBitIdx++;
+		uint8_t curByte;
+		SPLV_ERROR_PROPAGATE(splv_buffer_reader_read(in, sizeof(uint8_t), &curByte));
+		
+		if((curByte & (1u << 7)) != 0)
+		{
+			curByte = curByte & 0x7F;
 
-		uint8_t x = _splv_brick_geom_diff_position_decode(geomDiffEncoded, &geomDiffBitIdx);
-		uint8_t y = _splv_brick_geom_diff_position_decode(geomDiffEncoded, &geomDiffBitIdx);
-		uint8_t z = _splv_brick_geom_diff_position_decode(geomDiffEncoded, &geomDiffBitIdx);
-	
-		if(add)
-			splv_brick_set_voxel_filled(out, x, y, z, 0, 0, 0);
+			while(curByte > 0)
+			{
+				uint32_t idxArr = i / 32;
+				uint32_t idxBit = i % 32;
+
+				out->bitmap[idxArr] ^= 1u << idxBit;
+
+				i++;
+				curByte--;
+			}
+		}
 		else
-			splv_brick_set_voxel_empty(out, x, y, z);
+			i += curByte;
+	}
+
+	if(i != SPLV_BRICK_SIZE * SPLV_BRICK_SIZE * SPLV_BRICK_SIZE)
+	{
+		SPLV_LOG_ERROR("brick bitmap decoding had incorrect number of voxels, possibly corrupted data");
+		return SPLV_ERROR_INVALID_INPUT;
 	}
 
 	//read colors
