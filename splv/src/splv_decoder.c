@@ -438,7 +438,7 @@ SPLVerror splv_decoder_decode_frame(SPLVdecoder* decoder, uint64_t idx, uint64_t
 			return addWorkError;
 		}
 	#else
-		_splv_decoder_decode_brick_group(decodeInfo);
+		_splv_decoder_decode_brick_group(&decodeInfo);
 	#endif
 
 		sumVoxelsGroup += numVoxelsGroup;
