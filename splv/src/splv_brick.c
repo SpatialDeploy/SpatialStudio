@@ -468,7 +468,7 @@ static SPLVerror _splv_brick_decode_predictive(SPLVbufferReader* in, SPLVbrick* 
 
 	//copy last frame
 	//-----------------
-	splv_brick_clear(out);
+	memset(out, 0, sizeof(SPLVbrick));
 
 	for(uint32_t z = 0; z < SPLV_BRICK_SIZE; z++)
 	for(uint32_t y = 0; y < SPLV_BRICK_SIZE; y++)
