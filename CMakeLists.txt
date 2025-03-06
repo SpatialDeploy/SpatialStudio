@@ -57,6 +57,7 @@ add_library(splv_encoder_lib STATIC ${splv_src})
 
 target_include_directories(splv_encoder_lib PUBLIC "splv/include/")
 target_link_libraries(splv_encoder_lib PUBLIC blosc_static)
+target_compile_definitions(splv_encoder_lib PRIVATE _LIBCPP_HAS_NO_C11_ATOMIC)
 
 # create CLI executable
 if(SPLV_BUILD_CLI)
