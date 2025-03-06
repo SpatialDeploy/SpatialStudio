@@ -11,8 +11,27 @@
 
 //-------------------------------------------//
 
-static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVframe* frame, SPLVframeEncodingType frameType, uint32_t numBricks, 
-	                                              SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf, uint64_t* numVoxels);
+/**
+ * all info needed for a thread to encode a brick group
+ */
+typedef struct SPLVbrickGroupEncodeInfo
+{
+	SPLVencoder* encoder;
+
+	SPLVframe* frame; 
+	SPLVframeEncodingType frameType; 
+	
+	uint32_t numBricks; 
+	SPLVbrick** bricks;
+	SPLVcoordinate* brickPositions;
+	
+	SPLVbufferWriter* outBuf;
+	uint64_t* numVoxels;
+} SPLVbrickGroupEncodeInfo;
+
+//-------------------------------------------//
+
+static SPLVerror _splv_encoder_encode_brick_group(void* info);
 
 static void _splv_encoder_destroy(SPLVencoder* encoder);
 
@@ -99,6 +118,20 @@ SPLVerror splv_encoder_create(SPLVencoder* encoder, uint32_t width, uint32_t hei
 
 		SPLV_LOG_ERROR("failed to allocate encoder scratch buffers");
 		return SPLV_ERROR_OUT_OF_MEMORY;
+	}
+
+	//create thread pool:
+	//---------------
+	SPLVerror threadPoolError = splv_thread_pool_create(
+		&encoder->threadPool, SPLV_ENCODER_THREAD_POOL_SIZE,
+		_splv_encoder_encode_brick_group, sizeof(SPLVbrickGroupEncodeInfo)
+	);
+	if(threadPoolError != SPLV_SUCCESS)
+	{
+		_splv_encoder_destroy(encoder);
+
+		SPLV_LOG_ERROR("failed to create encoder thread pool");
+		return threadPoolError;	
 	}
 
 	//write empty header (will write over with complete header when encoding is finished):
@@ -188,29 +221,43 @@ SPLVerror splv_encoder_encode_frame(SPLVencoder* encoder, SPLVframe* frame, splv
 	uint32_t baseBrickGroupSize      = numBricksOrdered / max(numBrickGroups, 1);
 	uint32_t brickGroupSizeRemainder = numBricksOrdered % max(numBrickGroups, 1);
 
-	uint64_t numVoxels = 0;
-
 	for(uint32_t i = 0; i < numBrickGroups; i++)
 	{
 		uint32_t startBrick = i * baseBrickGroupSize + min(i, brickGroupSizeRemainder);
 		uint32_t numBricks = baseBrickGroupSize + (i < brickGroupSizeRemainder ? 1 : 0);
 
-		SPLVerror brickGroupError = _splv_encoder_encode_brick_group(
-			encoder, frame, frameType, numBricks, 
-			&encoder->scratchBufBricks[startBrick],
-			&encoder->scratchBufBrickPositions[startBrick],
-			&encoder->scratchBufBrickGroupWriters[i],
-			&encoder->scratchBufVoxelCounts[i]
-		);
+		SPLVbrickGroupEncodeInfo encodeInfo;
+		encodeInfo.encoder = encoder;
+		encodeInfo.frame = frame;
+		encodeInfo.frameType = frameType;
+		encodeInfo.numBricks = numBricks;
+		encodeInfo.bricks = &encoder->scratchBufBricks[startBrick];
+		encodeInfo.brickPositions = &encoder->scratchBufBrickPositions[startBrick];
+		encodeInfo.outBuf = &encoder->scratchBufBrickGroupWriters[i];
+		encodeInfo.numVoxels = &encoder->scratchBufVoxelCounts[i];
 
-		if(brickGroupError != SPLV_SUCCESS)
+		SPLVerror addWorkError = splv_thread_pool_add_work(encoder->threadPool, &encodeInfo);
+		if(addWorkError != SPLV_SUCCESS)
 		{
-			SPLV_LOG_ERROR("error encoding brick group");
-			return brickGroupError;
+			SPLV_LOG_ERROR("failed to add work to thread pool");
+			return addWorkError;
 		}
-
-		numVoxels += encoder->scratchBufVoxelCounts[i];
 	}
+
+	//wait for encoding threads:
+	//---------------
+	SPLVerror waitError = splv_thread_pool_wait(encoder->threadPool);
+	if(waitError != SPLV_SUCCESS)
+	{
+		SPLV_LOG_ERROR("failed to wait on thread pool");
+		return waitError;
+	}
+
+	//get total voxel count:
+	//---------------
+	uint64_t numVoxels = 0;
+	for(uint32_t i = 0; i < numBrickGroups; i++)
+		numVoxels += encoder->scratchBufVoxelCounts[i];
 
 	//write num bricks, num voxels, map:
 	//---------------
@@ -344,9 +391,12 @@ void splv_encoder_abort(SPLVencoder* encoder)
 
 //-------------------------------------------//
 
-static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVframe* frame, SPLVframeEncodingType frameType, uint32_t numBricks, 
-                                                  SPLVbrick** bricks, SPLVcoordinate* brickPositions, SPLVbufferWriter* outBuf, uint64_t* numVoxels)
+static SPLVerror _splv_encoder_encode_brick_group(void* arg)
 {
+	//get info:
+	//-----------------
+	SPLVbrickGroupEncodeInfo* info = (SPLVbrickGroupEncodeInfo*)arg;
+
 	//encode bricks:
 	//---------------
 	SPLVbufferWriter brickWriter;
@@ -354,26 +404,26 @@ static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVfram
 	if(brickWriterError != SPLV_SUCCESS)
 		return brickWriterError;
 
-	*numVoxels = 0;
+	*info->numVoxels = 0;
 
-	for(uint32_t i = 0; i < numBricks; i++)
+	for(uint32_t i = 0; i < info->numBricks; i++)
 	{
 		SPLVerror brickEncodeError;
 		uint32_t brickNumVoxels;
 
-		if(frameType == SPLV_FRAME_ENCODING_TYPE_P)
+		if(info->frameType == SPLV_FRAME_ENCODING_TYPE_P)
 		{
-			SPLVcoordinate brickPos = brickPositions[i];
+			SPLVcoordinate brickPos = info->brickPositions[i];
 			brickEncodeError = splv_brick_encode_predictive(
-				bricks[i], brickPos.x, brickPos.y, brickPos.z, 
-				&brickWriter, &encoder->lastFrame, &brickNumVoxels,
-				encoder->encodingParams.motionVectors
+				info->bricks[i], brickPos.x, brickPos.y, brickPos.z, 
+				&brickWriter, &info->encoder->lastFrame, &brickNumVoxels,
+				info->encoder->encodingParams.motionVectors
 			);
 		}
 		else
 		{
 			brickEncodeError = splv_brick_encode_intra(
-				bricks[i], &brickWriter, &brickNumVoxels
+				info->bricks[i], &brickWriter, &brickNumVoxels
 			);
 		}
 
@@ -385,12 +435,12 @@ static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVfram
 			return brickEncodeError;
 		}
 
-		*numVoxels += brickNumVoxels;
+		*info->numVoxels += brickNumVoxels;
 	}
 
 	//entropy code group:
 	//---------------
-	SPLVerror encodedWriterError = splv_buffer_writer_create(outBuf, 0);
+	SPLVerror encodedWriterError = splv_buffer_writer_create(info->outBuf, 0);
 	if(encodedWriterError != SPLV_SUCCESS)
 	{
 		splv_buffer_writer_destroy(&brickWriter);
@@ -399,12 +449,12 @@ static SPLVerror _splv_encoder_encode_brick_group(SPLVencoder* encoder, SPLVfram
 	}
 
 	SPLVerror encodeError = splv_rc_encode(
-		brickWriter.writePos, brickWriter.buf, outBuf
+		brickWriter.writePos, brickWriter.buf, info->outBuf
 	);
 
 	if(encodeError != SPLV_SUCCESS)
 	{
-		splv_buffer_writer_destroy(outBuf);
+		splv_buffer_writer_destroy(info->outBuf);
 		splv_buffer_writer_destroy(&brickWriter);
 
 		SPLV_LOG_ERROR("error range coding brick group");

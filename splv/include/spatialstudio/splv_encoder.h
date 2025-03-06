@@ -10,7 +10,14 @@
 #include "splv_global.h"
 #include "splv_dyn_array.h"
 #include "splv_format.h"
+#include "splv_threading.h"
 #include <stdio.h>
+
+//-------------------------------------------//
+
+#ifndef SPLV_ENCODER_THREAD_POOL_SIZE
+	#define SPLV_ENCODER_THREAD_POOL_SIZE 8
+#endif
 
 //-------------------------------------------//
 
@@ -19,6 +26,7 @@
  */
 typedef struct SPLVencoder
 {
+	//splv info:
 	uint32_t width;
 	uint32_t height;
 	uint32_t depth;
@@ -31,14 +39,19 @@ typedef struct SPLVencoder
 
 	SPLVframe lastFrame;
 
+	//output:
 	FILE* outFile;
 
+	//scartch buffers:
 	uint64_t mapBitmapLen;
 	uint32_t* scratchBufMapBitmap;
 	SPLVbrick** scratchBufBricks;
 	SPLVcoordinate* scratchBufBrickPositions;
 	SPLVbufferWriter* scratchBufBrickGroupWriters;
 	uint64_t* scratchBufVoxelCounts;
+
+	//thread pool:
+	SPLVthreadPool* threadPool;
 } SPLVencoder;
 
 //-------------------------------------------//

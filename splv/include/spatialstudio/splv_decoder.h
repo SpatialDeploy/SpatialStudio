@@ -24,46 +24,6 @@
 typedef struct SPLVdecoder SPLVdecoder;
 
 /**
- * all info needed for a thread to decode a brick group
- */
-typedef struct SPLVbrickGroupDecodeInfo
-{
-	SPLVdecoder* decoder;
-
-	SPLVframe* outFrame;
-	SPLVframeCompact* outFrameCompact;
-	
-	uint64_t compressedBufLen;
-	uint8_t* compressedBuf;
-	
-	uint32_t brickStartIdx;
-	uint32_t numBricks;
-	
-	uint64_t voxelsStartIdx;
-	uint64_t numVoxels;
-
-	SPLVframe* lastFrame;
-} SPLVbrickGroupDecodeInfo;
-
-/**
- * thread pool to accelerate decoder
- */
-typedef struct SPLVdecoderThreadPool
-{
-	uint32_t threadsShouldExit;
-	SPLVthread threads[SPLV_DECODER_THREAD_POOL_SIZE];
-
-	uint32_t groupStackSize;
-	SPLVbrickGroupDecodeInfo* groupStack;
-	SPLVmutex groupStackMutex;
-	SPLVconditionVariable groupStackEmptyCond;
-
-	uint32_t numGroupsDecoding;
-	SPLVmutex decodingMutex;
-	SPLVconditionVariable decodingDoneCond;
-} SPLVdecoderThreadPool;
-
-/**
  * all state needed by a decoder
  */
 typedef struct SPLVdecoder
@@ -101,7 +61,7 @@ typedef struct SPLVdecoder
 	SPLVcoordinate* scratchBufBrickPositions;
 
 	//thread pool:
-	SPLVdecoderThreadPool* threadPool;
+	SPLVthreadPool* threadPool;
 } SPLVdecoder;
 
 /**

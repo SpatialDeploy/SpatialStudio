@@ -19,6 +19,11 @@
 //-------------------------------------------//
 
 /**
+ * thread function prototype
+ */
+typedef void* (*SPLVthreadFunc)(void*);
+
+/**
  * a thread handle
  */
 typedef struct SPLVthread
@@ -55,11 +60,33 @@ typedef struct SPLVconditionVariable
 #endif
 } SPLVconditionVariable;
 
+/**
+ * thread pool work function prototype
+ */
+typedef SPLVerror (*SPLVthreadPoolFunc)(void*);
 
 /**
- * thread function prototype
+ * thread pool for simpler multithreading
  */
-typedef void* (*SPLVthreadFunc)(void*);
+typedef struct SPLVthreadPool
+{
+	uint32_t threadsShouldExit;
+	uint32_t numThreads;
+	SPLVthread* threads;
+
+	SPLVthreadPoolFunc workFunc;
+
+	uint64_t workSize;
+	int32_t workStackTop;
+	uint32_t workStackCap;
+	void* workStack;
+	SPLVmutex workStackMutex;
+	SPLVconditionVariable workStackEmptyCond;
+
+	uint32_t numWorkProcessing;
+	SPLVmutex workingMutex;
+	SPLVconditionVariable workDoneCond;
+} SPLVthreadPool;
 
 //-------------------------------------------//
 
@@ -117,5 +144,25 @@ SPLV_NOMANGLE SPLVerror splv_condition_variable_signal_one(SPLVconditionVariable
  * wakes all threads waiting on a condition variable
  */
 SPLV_NOMANGLE SPLVerror splv_condition_variable_signal_all(SPLVconditionVariable* cond);
+
+/**
+ * creates a thread pool
+ */
+SPLV_NOMANGLE SPLVerror splv_thread_pool_create(SPLVthreadPool** pool, uint32_t numThreads, SPLVthreadPoolFunc workFunc, uint64_t workSize);
+
+/**
+ * destroys a thread pool
+ */
+SPLV_NOMANGLE void splv_thread_pool_destroy(SPLVthreadPool* pool);
+
+/**
+ * pushes work on to a thread pool's stack
+ */
+SPLV_NOMANGLE SPLVerror splv_thread_pool_add_work(SPLVthreadPool* pool, void* workItem);
+
+/**
+ * waits for all work in a thread pool to finish
+ */
+SPLV_NOMANGLE SPLVerror splv_thread_pool_wait(SPLVthreadPool* pool);
 
 #endif //#ifndef SPLV_THREADING_H
