@@ -13,7 +13,6 @@
 	#include <windows.h>
 #else
 	#include <pthread.h>
-	#include <stdatomic.h>
 #endif
 
 //-------------------------------------------//
