@@ -12,7 +12,7 @@
 //-------------------------------------------//
 
 PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, float framerate, 
-                             uint32_t gopSize, uint32_t maxBrickGroupSize, bool motionVectors, std::string outPath)
+							 uint32_t gopSize, uint32_t maxBrickGroupSize, bool motionVectors, std::string outPath)
 {
 	//validate:
 	//---------------
@@ -57,8 +57,8 @@ PySPLVencoder::PySPLVencoder(uint32_t width, uint32_t height, uint32_t depth, fl
 }
 
 void PySPLVencoder::encode_nvdb_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ, 
-                                      int32_t maxX, int32_t maxY, int32_t maxZ, std::string lrAxisStr, 
-                                      std::string udAxisStr, std::string fbAxisStr, bool removeNonvisible)
+									  int32_t maxX, int32_t maxY, int32_t maxZ, std::string lrAxisStr, 
+									  std::string udAxisStr, std::string fbAxisStr, bool removeNonvisible)
 {
 	//parse + validate:
 	//---------------
@@ -87,7 +87,7 @@ void PySPLVencoder::encode_nvdb_frame(std::string path, int32_t minX, int32_t mi
 }
 
 void PySPLVencoder::encode_vox_frame(std::string path, int32_t minX, int32_t minY, int32_t minZ, 
-                                     int32_t maxX, int32_t maxY, int32_t maxZ, bool removeNonvisible)
+									 int32_t maxX, int32_t maxY, int32_t maxZ, bool removeNonvisible)
 {
 	//validate:
 	//--------------
@@ -114,13 +114,13 @@ void PySPLVencoder::encode_vox_frame(std::string path, int32_t minX, int32_t min
 }
 
 void PySPLVencoder::encode_numpy_frame_float(py::array_t<float> arr, std::string lrAxis, std::string udAxis, 
-                                             std::string fbAxis,  bool removeNonvisible)
+											 std::string fbAxis,  bool removeNonvisible)
 {
 	encode_numpy_frame(&arr, nullptr, lrAxis, udAxis, fbAxis, removeNonvisible);
 }
 
 void PySPLVencoder::encode_numpy_frame_byte(py::array_t<uint8_t> arr, std::string lrAxis, std::string udAxis, 
-                                            std::string fbAxis, bool removeNonvisible)
+											std::string fbAxis, bool removeNonvisible)
 {
 	encode_numpy_frame(nullptr, &arr, lrAxis, udAxis, fbAxis, removeNonvisible);
 }
@@ -150,7 +150,7 @@ void PySPLVencoder::abort()
 //-------------------------------------------//
 
 void PySPLVencoder::encode_numpy_frame(py::array_t<float>* floatArr, py::array_t<uint8_t>* byteArr, std::string lrAxisStr, 
-                                       std::string udAxisStr, std::string fbAxisStr, bool removeNonvisible)
+									   std::string udAxisStr, std::string fbAxisStr, bool removeNonvisible)
 {
 	//validate buffer is correct shape:
 	//---------------
@@ -423,15 +423,15 @@ std::tuple<uint32_t, uint32_t, uint32_t> get_vox_max_dimensions(std::string path
 
 void concat(const py::list& paths, const std::string& outPath)
 {
-    std::vector<std::string> stdPaths;
-    std::vector<const char*> cPaths;
+	std::vector<std::string> stdPaths;
+	std::vector<const char*> cPaths;
 
 	stdPaths.reserve(paths.size());
-    cPaths.reserve(paths.size());
-    for(const auto& path : paths)
+	cPaths.reserve(paths.size());
+	for(const auto& path : paths)
 	{
-        stdPaths.push_back(py::cast<std::string>(path));
-        cPaths.push_back(stdPaths.back().c_str());
+		stdPaths.push_back(py::cast<std::string>(path));
+		cPaths.push_back(stdPaths.back().c_str());
 	}
 
 	SPLVerror error = splv_file_concat((uint32_t)cPaths.size(), cPaths.data(), outPath.c_str());
@@ -445,8 +445,8 @@ void concat(const py::list& paths, const std::string& outPath)
 
 uint32_t split(const std::string& path, float splitLength, const std::string& outDir)
 {
-    uint32_t numSplits = 0;
-    SPLVerror error = splv_file_split(path.c_str(), splitLength, outDir.c_str(), &numSplits);
+	uint32_t numSplits = 0;
+	SPLVerror error = splv_file_split(path.c_str(), splitLength, outDir.c_str(), &numSplits);
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to split splv file with code " <<
@@ -454,18 +454,46 @@ uint32_t split(const std::string& path, float splitLength, const std::string& ou
 		throw std::runtime_error("");
 	}
 
-    return numSplits;
+	return numSplits;
 }
 
 void upgrade(const std::string& path, const std::string& outPath)
 {
-    SPLVerror error = splv_file_upgrade(path.c_str(), outPath.c_str());
+	SPLVerror error = splv_file_upgrade(path.c_str(), outPath.c_str());
 	if(error != SPLV_SUCCESS)
 	{
 		std::cout << "ERROR: failed to upgrade splv file with code " <<
 			error << " (" << splv_get_error_string(error) << ")\n";
 		throw std::runtime_error("");
 	}
+}
+
+py::dict get_metadata(const std::string& path) 
+{
+	SPLVmetadata metadata;
+	SPLVerror error = splv_file_get_metadata(path.c_str(), &metadata);
+	if(error != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to get splv metadata with code " <<
+			error << " (" << splv_get_error_string(error) << ")\n";
+		throw std::runtime_error("");
+	}
+	
+	py::dict encodingParams;
+	encodingParams["gopSize"] = metadata.encodingParams.gopSize;
+	encodingParams["maxBrickGroupSize"] = metadata.encodingParams.maxBrickGroupSize;
+	encodingParams["motionVectors"] = (bool)metadata.encodingParams.motionVectors;
+	
+	py::dict result;
+	result["width"] = metadata.width;
+	result["height"] = metadata.height;
+	result["depth"] = metadata.depth;
+	result["framerate"] = metadata.framerate;
+	result["frameCount"] = metadata.frameCount;
+	result["duration"] = metadata.duration;
+	result["encodingParams"] = encodingParams;
+	
+	return result;
 }
 
 //-------------------------------------------//
@@ -545,4 +573,8 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 		py::arg("path"),
 		py::arg("outPath"),
 		"Upgrades an SPLV file from the previous version to the current one");
+
+	m.def("get_metadata", &get_metadata,
+		py::arg("path"),
+		"Returns the metadata of an SPLV file as a dictionary");
 }

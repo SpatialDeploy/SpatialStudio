@@ -302,6 +302,51 @@ SPLVerror splv_file_upgrade(const char* path, const char* outPath)
 	return SPLV_SUCCESS;
 }
 
+SPLVerror splv_file_get_metadata(const char* path, SPLVmetadata* metadata)
+{
+	//open file:
+	//---------------
+	FILE* file = fopen(path, "rb");
+	if(!file)
+	{
+		SPLV_LOG_ERROR("failed to open file to get metadata");
+		return SPLV_ERROR_FILE_OPEN;
+	}
+
+	//read + validate header:
+	//---------------
+	SPLVfileHeader header;
+	if(fread(&header, sizeof(SPLVfileHeader), 1, file) < 1)
+	{
+		SPLV_LOG_ERROR("failed to file header");
+		return SPLV_ERROR_FILE_READ;
+	}
+
+	if(header.magicWord != SPLV_MAGIC_WORD)
+	{
+		SPLV_LOG_ERROR("invalid SPLV file - mismatched magic word");
+		return SPLV_ERROR_INVALID_INPUT;
+	}
+
+	if(header.version != SPLV_VERSION)
+	{
+		SPLV_LOG_ERROR("invalid SPLV file - mismatched version");
+		return SPLV_ERROR_INVALID_INPUT;
+	}
+
+	//return:
+	//---------------
+	metadata->width = header.width;
+	metadata->height = header.height;
+	metadata->depth = header.depth;
+	metadata->framerate = header.framerate;
+	metadata->frameCount = header.frameCount;
+	metadata->duration = header.duration;
+	metadata->encodingParams = header.encodingParams;
+
+	return SPLV_SUCCESS;
+}
+
 //-------------------------------------------//
 
 static void _splv_frame_ref_add(SPLVframeRef* ref) 
