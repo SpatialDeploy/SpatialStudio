@@ -98,6 +98,7 @@ public struct SPLVencodingParams
 {
 	public UInt32 gopSize;
 	public UInt32 maxBrickGroupSize;
+	public Byte motionVectors;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -122,6 +123,9 @@ public struct SPLVencoder
 	public IntPtr scratchBufBricks;
 	public IntPtr scratchBufBrickPositions;
 	public IntPtr scratchBufBrickGroupWriters;
+	public IntPtr scratchBufVoxelCounts;
+
+	public IntPtr threadPool;
 }
 
 [StructLayout(LayoutKind.Explicit)]
