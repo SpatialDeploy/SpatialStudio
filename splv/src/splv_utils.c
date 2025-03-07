@@ -334,7 +334,7 @@ SPLVerror splv_file_get_metadata(const char* path, SPLVmetadata* metadata)
 		return SPLV_ERROR_INVALID_INPUT;
 	}
 
-	//return:
+	//cleanup + return:
 	//---------------
 	metadata->width = header.width;
 	metadata->height = header.height;
@@ -343,6 +343,8 @@ SPLVerror splv_file_get_metadata(const char* path, SPLVmetadata* metadata)
 	metadata->frameCount = header.frameCount;
 	metadata->duration = header.duration;
 	metadata->encodingParams = header.encodingParams;
+
+	fclose(file);
 
 	return SPLV_SUCCESS;
 }
