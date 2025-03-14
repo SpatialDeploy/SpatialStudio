@@ -496,6 +496,17 @@ py::dict get_metadata(const std::string& path)
 	return result;
 }
 
+void dump_to_nvdb(const std::string& path, const std::string& outDir)
+{
+	SPLVerror error = splv_file_dump_to_nvdb(path.c_str(), outDir.c_str());
+	if(error != SPLV_SUCCESS)
+	{
+		std::cout << "ERROR: failed to dump nvdbs with code " <<
+			error << " (" << splv_get_error_string(error) << ")\n";
+		throw std::runtime_error("");
+	}
+}
+
 //-------------------------------------------//
 
 PYBIND11_MODULE(splv_encoder_py, m) {
@@ -577,4 +588,9 @@ PYBIND11_MODULE(splv_encoder_py, m) {
 	m.def("get_metadata", &get_metadata,
 		py::arg("path"),
 		"Returns the metadata of an SPLV file as a dictionary");
+
+	m.def("dump_to_nvdb", &dump_to_nvdb,
+		py::arg("path"),
+		py::arg("outDir"),
+		"Dumps all frames in an SPLV file into individual NanoVDB files");
 }

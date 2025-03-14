@@ -5,6 +5,7 @@
 #include "spatialstudio/splv_encoder.h"
 #include "spatialstudio/splv_decoder.h"
 #include "spatialstudio/splv_decoder_legacy.h"
+#include "spatialstudio/splv_nvdb_utils.h"
 
 //-------------------------------------------//
 
@@ -345,6 +346,60 @@ SPLVerror splv_file_get_metadata(const char* path, SPLVmetadata* metadata)
 	metadata->encodingParams = header.encodingParams;
 
 	fclose(file);
+
+	return SPLV_SUCCESS;
+}
+
+SPLV_API SPLVerror splv_file_dump_to_nvdb(const char* path, const char* outDir)
+{
+	//create decoder:
+	//---------------
+	SPLVdecoderSequential decoder;
+	SPLVerror decoderError = _splv_decoder_sequential_create(&decoder, path);
+	if(decoderError != SPLV_SUCCESS)
+		return decoderError;
+
+	//read + dump frames:
+	//---------------
+	char outPath[512];
+	char idxStr[10];
+
+	strcpy_s(outPath, 512, outDir);
+
+	uint32_t outDirLen = (uint32_t)strlen(outDir);
+	if(outPath[outDirLen - 1] != '/' && outPath[outDirLen - 1] != '\\')
+	{
+		strcat_s(outPath, 512, "\\");
+		outDirLen++;
+	}
+
+	for(uint32_t i = 0; i < decoder.impl.frameCount; i++) 
+	{
+		SPLVframeRef* frame;
+
+		SPLVerror decodeError = _splv_decoder_sequential_decode(&decoder, &frame);
+		if(decodeError != SPLV_SUCCESS) 
+		{
+			_splv_decoder_sequential_destroy(&decoder);
+			return decodeError;
+		}
+
+		outPath[outDirLen] = '\0';
+
+		strcat_s(outPath, 512, "/frame_");
+
+		_itoa_s(i, idxStr, 10, 10);
+		strcat_s(outPath, 512, idxStr);
+		strcat_s(outPath, 512, ".nvdb");
+
+		SPLVerror nvdbError = splv_nvdb_save(&frame->frame, outPath);
+		if(nvdbError != SPLV_SUCCESS)
+			SPLV_LOG_WARNING("failed to save nvdb frame");
+	}
+
+	//cleanup + return:
+	//---------------
+	_splv_decoder_sequential_destroy(&decoder);
 
 	return SPLV_SUCCESS;
 }

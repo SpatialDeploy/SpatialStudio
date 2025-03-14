@@ -76,8 +76,8 @@ typedef struct SPLVthreadPool
 	SPLVthreadPoolFunc workFunc;
 
 	uint64_t workSize;
-	int32_t workStackTop;
-	uint32_t workStackCap;
+	int64_t workStackTop;
+	uint64_t workStackCap;
 	void* workStack;
 	SPLVmutex workStackMutex;
 	SPLVconditionVariable workStackEmptyCond;

@@ -2,6 +2,7 @@
 
 #define NANOVDB_USE_BLOSC
 #include "nanovdb/util/IO.h"
+#include "nanovdb/util/GridBuilder.h"
 #include "spatialstudio/splv_log.h"
 
 //-------------------------------------------//
@@ -114,5 +115,66 @@ SPLVerror splv_nvdb_load(const char* path, SPLVframe* outFrame, SPLVboundingBox*
 
 	//return:
 	//---------------
+	return SPLV_SUCCESS;
+}
+
+SPLVerror splv_nvdb_save(SPLVframe* frame, const char* outPath)
+{
+	//create grid:
+	//---------------
+	nanovdb::GridBuilder<nanovdb::Vec3f> builder;
+	
+	//write voxels:
+	//---------------
+	auto accessor = builder.getAccessor();
+
+	for(uint32_t zMap = 0; zMap < frame->depth ; zMap++)
+	for(uint32_t yMap = 0; yMap < frame->height; yMap++)
+	for(uint32_t xMap = 0; xMap < frame->width ; xMap++)
+	{
+		uint32_t mapIdx = splv_frame_get_map_idx(frame, xMap, yMap, zMap);
+		uint32_t brickIdx = frame->map[mapIdx];
+		
+		if(brickIdx == SPLV_BRICK_IDX_EMPTY)
+			continue;
+		
+		SPLVbrick* brick = &frame->bricks[brickIdx];
+		for(uint32_t zBrick = 0; zBrick < SPLV_BRICK_SIZE; zBrick++)
+		for(uint32_t yBrick = 0; yBrick < SPLV_BRICK_SIZE; yBrick++)
+		for(uint32_t xBrick = 0; xBrick < SPLV_BRICK_SIZE; xBrick++)
+		{
+			if(!splv_brick_get_voxel(brick, xBrick, yBrick, zBrick))
+				continue;
+			
+			uint8_t r, g, b;
+			splv_brick_get_voxel_color(brick, xBrick, yBrick, zBrick, &r, &g, &b);
+			
+			float normR = r / 255.0f;
+			float normG = g / 255.0f;
+			float normB = b / 255.0f;
+			
+			int32_t x = xMap * SPLV_BRICK_SIZE + xBrick;
+			int32_t y = yMap * SPLV_BRICK_SIZE + yBrick;
+			int32_t z = zMap * SPLV_BRICK_SIZE + zBrick;
+			accessor.setValue(nanovdb::Coord(x, y, z), nanovdb::Vec3f(normR, normG, normB));
+		}
+	}
+	
+	//create the grid:
+	//---------------
+	nanovdb::GridHandle handle = builder.getHandle(1.0, nanovdb::Vec3d(0.0), "SPLVvolume");
+	
+	//write to file:
+	//---------------
+	try 
+	{
+		nanovdb::io::writeGrid(outPath, handle, nanovdb::io::Codec::BLOSC);
+	}
+	catch(std::exception&)
+	{
+		SPLV_LOG_ERROR("failed to write nvdb file");
+		return SPLV_ERROR_FILE_WRITE;
+	}
+	
 	return SPLV_SUCCESS;
 }

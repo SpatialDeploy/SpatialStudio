@@ -60,5 +60,6 @@ void concat(const py::list& paths, const std::string& outPath);
 uint32_t split(const std::string& path, float splitLength, const std::string& outDir);
 void upgrade(const std::string& path, const std::string& outPath);
 py::dict get_metadata(const std::string& path);
+void dump_to_nvdb(const std::string& path, const std::string& outDir);
 
 #endif //#ifndef PY_ENCODER_H

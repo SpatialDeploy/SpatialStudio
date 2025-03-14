@@ -74,6 +74,7 @@ Also included in the python bindings are some utility functions:
 - `splv.upgrade(path, outPath)` upgrades a spatial from the previous version to the current version.
 - `splv.get_vox_max_dimensions(path)` returns the maximum dimensions of the frames in a given `vox` file.
 - `splv.get_metadata(path)` returns the metadata of an `splv` as a dictionary.
+- `splv.dump_to_nvdb(path, outDir)` dumps all frames in an `splv` into individual `nvdb` files.
 
 ## Usage (CLI)
 The CLI must be called with `./splv_encoder -d [xSize] [ySize] [zSize] -f [framerate] -g [gopSize] -b [maxBrickGroupSize] -m [motionVectors] -o [outputPath]`. 

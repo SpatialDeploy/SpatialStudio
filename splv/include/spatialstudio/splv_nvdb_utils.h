@@ -17,4 +17,9 @@
  */
 SPLV_API SPLVerror splv_nvdb_load(const char* path, SPLVframe* outFrame, SPLVboundingBox* bbox, SPLVaxis lrAxis, SPLVaxis udAxis, SPLVaxis fbAxis);
 
+/**
+ * saves a frame into a .nvdb file. The voxels are written in the bounding box (0, 0, 0) to (width - 1, height - 1, depth - 1)
+ */
+SPLV_API SPLVerror splv_nvdb_save(SPLVframe* frame, const char* outPath);
+
 #endif //#ifndef SPLV_NVDB_UTILS_H

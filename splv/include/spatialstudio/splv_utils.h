@@ -50,4 +50,9 @@ SPLV_API SPLVerror splv_file_upgrade(const char* path, const char* outPath);
  */
 SPLV_API SPLVerror splv_file_get_metadata(const char* path, SPLVmetadata* metadata);
 
+/**
+ * dumps all frames of an SPLV file to nvdbs into the specified directory
+ */
+SPLV_API SPLVerror splv_file_dump_to_nvdb(const char* path, const char* outDir);
+
 #endif //#ifndef SPLV_UTILS_H
